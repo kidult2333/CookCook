@@ -301,8 +301,8 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 
 /* shopping */
 .shop-summary {
-  background: var(--card); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
-  box-shadow: var(--shadow); border: 1px solid var(--line);
+  background: #f5ecd4; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
+  box-shadow: var(--shadow); border: 1px solid #d9b98a;
 }
 .shop-sum-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .shop-sum-label { font-size: 14px; font-weight: 700; color: var(--text); }
