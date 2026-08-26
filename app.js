@@ -78,7 +78,9 @@ function setTitle(t) { $title.textContent = t; }
 function syncTabs() {
   const h = location.hash.slice(1) || '/calendar';
   document.querySelectorAll('.tab').forEach(a => {
-    a.classList.toggle('active', h.startsWith(a.dataset.tab));
+    let on = h.startsWith(a.dataset.tab);
+    if (a.dataset.tab === 'calendar' && h.startsWith('/day')) on = true; // 餐单页是日历的子页，日历tab保持高亮
+    a.classList.toggle('active', on);
   });
 }
 
@@ -126,9 +128,13 @@ async function renderCalendar() {
   const today = ymd(new Date());
   const days = weekDays(calCursor);
   const first = days[0], last = days[6];
-  const rangeLabel = first.slice(0, 7) === last.slice(0, 7)
-    ? `${first.slice(5).replace('-', '/')} ~ ${last.slice(8)}`
-    : `${first.slice(5).replace('-', '/')} ~ ${last.slice(5).replace('-', '/')}`;
+  const f = first.slice(5).replace('-', '/'); // MM/DD
+  const l = last.slice(5).replace('-', '/');  // MM/DD
+  const rangeLabel = `${f}~${l}`;
+  const m1 = +first.slice(5, 7), m2 = +last.slice(5, 7);
+  const y1 = +first.slice(0, 4), y2 = +last.slice(0, 4);
+  const yearLabel = y1 === y2 ? `${y1}年` : `${y1}→${y2}年`;
+  const monthLabel = m1 === m2 ? `${m1}月` : `${m1}-${m2}月`;
 
   function dayRow(ds) {
     const d = new Date(ds + 'T00:00:00');
@@ -157,7 +163,10 @@ async function renderCalendar() {
   $app.innerHTML = `
     <div class="cal-nav">
       <button class="cal-arrow" onclick="shiftWeek(-7)">‹</button>
-      <div class="cal-month">${rangeLabel}</div>
+      <div class="cal-month">
+        <div class="cal-year">${yearLabel}</div>
+        <div class="cal-range">${rangeLabel} <span class="cal-mo">· ${monthLabel}</span></div>
+      </div>
       <button class="cal-arrow" onclick="shiftWeek(7)">›</button>
     </div>
     <div class="wk-list">${days.map(dayRow).join('')}</div>

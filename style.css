@@ -55,10 +55,15 @@ body {
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  text-decoration: none; color: var(--muted); font-size: 11px; gap: 2px;
+  text-decoration: none; color: var(--muted); font-size: 11px; gap: 2px; position: relative;
 }
-.tab .tab-ico { font-size: 22px; line-height: 1; }
+.tab .tab-ico { font-size: 22px; line-height: 1; transition: transform .15s; }
 .tab.active { color: var(--accent); font-weight: 600; }
+.tab.active::before {
+  content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent);
+}
+.tab.active .tab-ico { transform: scale(1.12); }
 
 /* generic UI */
 .card { background: var(--card); border-radius: 12px; box-shadow: var(--shadow); padding: 14px; margin-bottom: 12px; }
@@ -133,8 +138,10 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
   background: var(--card); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
   box-shadow: var(--shadow);
 }
-.cal-month { font-size: 18px; }
-.cal-month b { color: var(--accent); font-size: 22px; }
+.cal-month { text-align: center; line-height: 1.25; }
+.cal-year { font-size: 12px; color: var(--muted); font-weight: 500; }
+.cal-range { font-size: 17px; font-weight: 700; color: var(--text); }
+.cal-range .cal-mo { font-size: 13px; color: var(--muted); font-weight: 500; }
 .cal-arrow {
   background: var(--bg); border: none; border-radius: 50%;
   width: 34px; height: 34px; font-size: 20px; color: var(--accent); cursor: pointer;
