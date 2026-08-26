@@ -56,11 +56,15 @@ body {
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-decoration: none; color: var(--muted); font-size: 11px; gap: 2px; position: relative;
-  margin: 6px 4px; padding: 6px 0; border-radius: 12px; transition: background .15s, color .15s;
+  margin: 6px 4px; padding: 8px 0; border-radius: 14px; transition: background .15s, color .15s;
 }
 .tab .tab-ico { font-size: 22px; line-height: 1; transition: transform .15s; }
-.tab.active { color: var(--accent); font-weight: 700; background: rgba(232,148,58,.14); }
-.tab.active .tab-ico { transform: scale(1.12); }
+.tab.active {
+  color: var(--accent-d); font-weight: 700;
+  background: #f5ecd4;
+  box-shadow: 0 0 0 1.5px #d9b98a inset;
+}
+.tab.active .tab-ico { transform: scale(1.15); }
 
 /* generic UI */
 .card { background: var(--card); border-radius: 12px; box-shadow: var(--shadow); padding: 14px; margin-bottom: 12px; }
@@ -161,13 +165,17 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 .wk-dow.wknd { color: var(--accent); }
 .wk-num { font-size: 20px; font-weight: 700; line-height: 1.2; }
 .wk-today { font-size: 10px; background: var(--accent); color: #fff; border-radius: 8px; padding: 0 5px; margin-top: 2px; }
-.wk-meals { flex: 1; display: flex; flex-direction: column; gap: 4px; justify-content: center; min-width: 0; }
+.wk-meals { flex: 1; display: flex; flex-direction: column; gap: 5px; justify-content: center; min-width: 0; }
 .wk-meal {
-  display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0;
+  display: flex; align-items: center; gap: 7px; font-size: 13px; min-width: 0;
 }
-.wk-bar { width: 4px; height: 14px; border-radius: 2px; background: var(--mc, #ccc); flex-shrink: 0; }
-.wk-l { font-size: 11px; color: var(--muted); flex-shrink: 0; width: 2.5em; }
-.wk-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.wk-bar { width: 4px; height: 18px; border-radius: 2px; background: var(--mc, #ccc); flex-shrink: 0; }
+.wk-l { font-size: 13px; font-weight: 700; color: var(--mc, var(--muted)); flex-shrink: 0; width: 3em; }
+.wk-chips { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.wk-chip {
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 3px 8px; font-size: 13px; color: var(--text); white-space: nowrap;
+}
 .wk-empty { font-size: 12px; color: var(--muted); opacity: .7; }
 
 /* meal slots (餐单页) */
@@ -210,6 +218,16 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 }
 .tag-filter:active { opacity: .7; }
 .tag-filter.on { border-color: var(--accent); color: var(--accent); }
+.tag-filter b { font-weight: 700; }
+/* 过期状态筛选：选中时填对应色 */
+.tag-filter.state-red.on { background: var(--red); border-color: var(--red); color: #fff; }
+.tag-filter.state-yellow.on { background: var(--yellow); border-color: var(--yellow); color: #fff; }
+.tag-filter.state-green.on { background: var(--green); border-color: var(--green); color: #fff; }
+.tag-filter.state-none.on { background: #c8c2bb; border-color: #c8c2bb; color: #fff; }
+.tag-filter.state-red.on b,
+.tag-filter.state-yellow.on b,
+.tag-filter.state-green.on b,
+.tag-filter.state-none.on b { color: #fff; }
 
 /* pantry */
 .pantry-group { margin-bottom: 18px; }
@@ -251,7 +269,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 
 /* shopping */
 .shop-prog { height: 8px; background: var(--line); border-radius: 6px; overflow: hidden; margin-bottom: 4px; }
-.shop-prog-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 6px; transition: width .3s; }
+.shop-prog-fill { height: 100%; background: var(--green); border-radius: 6px; transition: width .3s; }
 .shop-prog-t { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 .shop-sec {
   display: flex; align-items: center; font-size: 13px; font-weight: 700;

@@ -78,8 +78,9 @@ function setTitle(t) { $title.textContent = t; }
 function syncTabs() {
   const h = location.hash.slice(1) || '/calendar';
   document.querySelectorAll('.tab').forEach(a => {
-    let on = h.startsWith(a.dataset.tab);
-    if (a.dataset.tab === 'calendar' && h.startsWith('/day')) on = true; // 餐单页是日历的子页，日历tab保持高亮
+    const tab = a.dataset.tab;
+    let on = h === '/' + tab || h.startsWith('/' + tab + '/');
+    if (tab === 'calendar' && (h === '/day' || h.startsWith('/day/'))) on = true; // 餐单页是日历子页，日历tab保持高亮
     a.classList.toggle('active', on);
   });
 }
@@ -147,10 +148,10 @@ async function renderCalendar() {
       for (const [key, label, color] of MEAL_SLOTS) {
         const entries = p[key] || (key === 'afternoon_snack' && p.snacks ? p.snacks : []);
         if (!entries.length) continue;
-        const txts = entries.map(e => e.type === 'recipe'
+        const chips = entries.map(e => esc(e.type === 'recipe'
           ? (recipeMap.get(e.recipeId)?.title || '（已删除）')
-          : e.text).join('、');
-        meals += `<div class="wk-meal" style="--mc:${color}"><span class="wk-bar"></span><span class="wk-l">${label}</span><span class="wk-t">${esc(txts)}</span></div>`;
+          : e.text)).map(t => `<span class="wk-chip">${t}</span>`).join('');
+        meals += `<div class="wk-meal" style="--mc:${color}"><span class="wk-bar"></span><span class="wk-l">${label}</span><span class="wk-chips">${chips}</span></div>`;
       }
     }
     const cls = ['wk-row', isToday ? 'today' : '', p ? 'has-plan' : ''].filter(Boolean).join(' ');
@@ -733,7 +734,9 @@ async function impSave() {
 // PANTRY
 // =====================================================================
 let pantryTagFilter = null;
+let pantryStateFilter = null;
 function pantrySetTagFilter(t) { pantryTagFilter = (pantryTagFilter === t) ? null : t; renderPantry(); }
+function pantrySetStateFilter(s) { pantryStateFilter = (pantryStateFilter === s) ? null : s; renderPantry(); }
 async function renderPantry() {
   const items = await listPantry();
   // expiry reminder banner
@@ -743,6 +746,22 @@ async function renderPantry() {
   if (soon.length) {
     banner = `<div class="banner">⚠️ ${soon.length}样食材快过期：${soon.slice(0, 4).map(i => esc(i.name)).join('、')}${soon.length > 4 ? '…' : ''}</div>`;
   }
+  // expiry-state filter bar (colored by state)
+  const STATES = [
+    { key:'red', label:'已过期' },
+    { key:'yellow', label:'即将过期' },
+    { key:'green', label:'新鲜' },
+    { key:'none', label:'无保质期' },
+  ];
+  const stateBar = `<div class="tag-bar">
+    <button class="tag-filter ${pantryStateFilter?'':'on'}" onclick="pantryStateFilter=null;renderPantry()">全部</button>
+    ${STATES.map(s => {
+      const n = items.filter(i => expiryState(i.expiryDate) === s.key).length;
+      const on = pantryStateFilter === s.key;
+      const badge = n ? ' <b>' + n + '</b>' : '';
+      return `<button class="tag-filter state-${s.key} ${on?'on':''}" onclick="pantrySetStateFilter('${s.key}')">${s.label}${badge}</button>`;
+    }).join('')}
+  </div>`;
   // tag filter bar (colored chips)
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
   let filterBar = '';
@@ -755,7 +774,9 @@ async function renderPantry() {
     }).join('');
     filterBar = `<div class="tag-bar"><button class="tag-filter ${pantryTagFilter?'':'on'}" onclick="pantryTagFilter=null;renderPantry()">全部</button>${chips}</div>`;
   }
-  const filtered = pantryTagFilter ? items.filter(i => (i.tags || []).includes(pantryTagFilter)) : items;
+  let filtered = items;
+  if (pantryStateFilter) filtered = filtered.filter(i => expiryState(i.expiryDate) === pantryStateFilter);
+  if (pantryTagFilter) filtered = filtered.filter(i => (i.tags || []).includes(pantryTagFilter));
   // group by expiry state, most urgent first
   const groups = { red: [], yellow: [], green: [], none: [] };
   filtered.forEach(i => groups[expiryState(i.expiryDate)].push(i));
@@ -801,6 +822,7 @@ async function renderPantry() {
   }
   $app.innerHTML = `${banner}
     <button class="btn secondary" onclick="editPantry()" style="margin-bottom:12px">+ 添加食材</button>
+    ${stateBar}
     ${filterBar}
     <div>${list}</div>`;
 }
