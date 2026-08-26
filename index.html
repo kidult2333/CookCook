@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CookCook">
+  <meta name="theme-color" content="#e8943a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>CookCook</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="view-title">CookCook</h1>
+    <button id="more-btn" class="icon-btn" aria-label="更多">⋯</button>
+  </header>
+
+  <main id="app"></main>
+
+  <nav class="tabbar">
+    <a href="#/calendar" class="tab" data-tab="calendar">
+      <span class="tab-ico">📅</span><span class="tab-lbl">日历</span>
+    </a>
+    <a href="#/recipes" class="tab" data-tab="recipes">
+      <span class="tab-ico">🍳</span><span class="tab-lbl">菜谱</span>
+    </a>
+    <a href="#/pantry" class="tab" data-tab="pantry">
+      <span class="tab-ico">🥫</span><span class="tab-lbl">食材库</span>
+    </a>
+    <a href="#/shopping" class="tab" data-tab="shopping">
+      <span class="tab-ico">🛒</span><span class="tab-lbl">购物</span>
+    </a>
+  </nav>
+
+  <script src="db.js" defer></script>
+  <script src="store.js" defer></script>
+  <script src="import.js" defer></script>
+  <script src="calories.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
