@@ -1,5 +1,10 @@
 # 本地辅助脚本（含本地路径，不上传）
 gen-icons.ps1
+use-ref-icon.ps1
+
+# 图标源参考图（本地保留，不推上去）
+icons/d195f3f2997f161a1879b46cb684df10.png
+icons/_ref.jpg
 
 # 系统/编辑器
 .DS_Store
