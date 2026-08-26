@@ -235,7 +235,7 @@ async function renderDay(date) {
     slots += `<div class="meal-slot ${expanded?'open':'closed'}" style="border-left:4px solid ${color}">
       <div class="meal-head" onclick="toggleMealSlot('${key}')">
         <span class="meal-label" style="color:${color}">${label}</span>
-        <span class="meal-count">${entries.length?entries.length+'项':'<span class="meal-add-hint">+ 添加</span>'}</span>
+        ${entries.length ? `<span class="meal-count">${entries.length}项</span>` : ''}
         <span class="meal-caret">${expanded?'▾':'▸'}</span>
       </div>
       ${expanded ? body : ''}
@@ -244,11 +244,11 @@ async function renderDay(date) {
   const totalKcal = await (async () => { const agg = await aggregateIngredients([plan]); return agg; })();
   $app.innerHTML = `
     <div class="day-banner">
+      <button class="day-back" onclick="history.back()">‹ 返回</button>
       <div class="day-banner-d">${fmtDate(date)}</div>
     </div>
     ${slots}
     <button class="btn" onclick="dayGenList('${date}')">🛒 生成这天的备菜清单</button>
-    <button class="btn ghost" onclick="history.back()" style="margin-top:8px">返回日历</button>
   `;
 }
 function toggleMealSlot(key) {
@@ -266,7 +266,7 @@ function renderDayKeepScroll(date) {
 async function dayAddRecipe(date, key) {
   const plan = await getPlanCompat(date);
   const recipes = await listRecipes();
-  if (!recipes.length) { alert('还没有菜谱，先去"菜谱"tab新建或导入一个吧'); return; }
+  if (!recipes.length) { alert('还没有菜谱，先去"菜谱"tab新建一个吧'); return; }
   const opts = recipes.map(r => `<option value="${r.id}">${esc(r.title)}</option>`).join('');
   const m = el(`<div class="modal-bg" onclick="if(event.target===this)this.remove()">
     <div class="modal"><h2>选一个菜谱<button class="modal-close" onclick="this.closest('.modal-bg').remove()">✕</button></h2>
@@ -414,7 +414,7 @@ async function renderRecipes() {
   };
   if (!recipes.length) {
     $app.innerHTML = `
-      <div class="card"><div class="empty"><div class="big">🍳</div>还没有菜谱<br>点右下角 ＋ 新建一道</div></div>
+      <div class="card"><div class="empty"><div class="big">🍳</div>还没有菜谱<br>点下面 ＋ 新建一道</div></div>
       <button class="fab" onclick="location.hash='/recipe/new'">＋</button>`;
     return;
   }
@@ -1013,8 +1013,8 @@ async function renderShopping() {
     ${progress}
     <div>${list}</div>
     <div class="fab-bar">
-      <button class="fab-pill add" onclick="shopAddManual()">＋ 手动加一项</button>
-      <button class="fab-pill clear" onclick="shopClearChecked()" ${bought.length ? '' : 'disabled'}>清理已购${bought.length?'('+bought.length+')':''}</button>
+      <button class="fab-pill add" onclick="shopAddManual()">添加</button>
+      <button class="fab-pill clear" onclick="shopClearChecked()" ${bought.length ? '' : 'disabled'}>清理</button>
     </div>
   `;
 }
@@ -1059,7 +1059,7 @@ async function renderMore() {
     </div>
     <div class="card">
       <div class="section-title">关于</div>
-      <p style="font-size:13px;color:var(--muted)">CookCook — 离线可用的菜谱与餐单 PWA。<br>小红书导入为半自动（截图+实况文本复制+粘贴），非自动抓取。</p>
+      <p style="font-size:13px;color:var(--muted)">CookCook — 离线可用的菜谱与餐单 PWA。<br>新建菜谱支持粘贴小红书文本自动识别（截图+实况文本复制+粘贴），非自动抓取。</p>
     </div>`;
 }
 async function moreExport() {

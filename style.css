@@ -224,7 +224,9 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 .wk-empty { font-size: 12px; color: var(--muted); opacity: .7; }
 
 /* meal slots (餐单页) */
-.day-banner { background: var(--card); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.day-banner { background: var(--card); border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 12px; }
+.day-back { background: none; border: none; color: var(--accent); font-size: 16px; font-weight: 600; padding: 4px 8px; cursor: pointer; flex-shrink: 0; }
+.day-back:active { opacity: .6; }
 .day-banner-d { font-size: 20px; font-weight: 700; }
 .day-banner-s { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
@@ -237,8 +239,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 .meal-head:active { opacity: .6; }
 .meal-label { font-weight: 700; font-size: 15px; }
 .meal-count { font-size: 11px; color: var(--muted); margin-left: auto; }
-.meal-add-hint { color: var(--accent); font-weight: 600; }
-.meal-caret { font-size: 12px; color: var(--muted); flex-shrink: 0; width: 14px; text-align: center; }
+.meal-caret { font-size: 18px; color: var(--muted); flex-shrink: 0; width: 18px; text-align: center; line-height: 1; }
 .meal-list { min-height: 4px; }
 .meal-row {
   display: flex; align-items: center; gap: 8px; padding: 7px 0;
