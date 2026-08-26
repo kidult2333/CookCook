@@ -41,7 +41,7 @@ body {
 }
 .icon-btn:active { background: var(--line); }
 
-#app { padding: 14px 14px 24px; max-width: 640px; margin: 0 auto; }
+#app { padding: 14px 14px calc(80px + var(--safe-bottom)); max-width: 640px; margin: 0 auto; }
 
 /* tab bar */
 .tabbar {
@@ -187,9 +187,12 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
   background: var(--card); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px;
   box-shadow: var(--shadow); border-left: 4px solid #ccc;
 }
-.meal-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.meal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.meal-head:active { opacity: .6; }
 .meal-label { font-weight: 700; font-size: 15px; }
-.meal-count { font-size: 11px; color: var(--muted); }
+.meal-count { font-size: 11px; color: var(--muted); margin-left: auto; }
+.meal-add-hint { color: var(--accent); font-weight: 600; }
+.meal-caret { font-size: 12px; color: var(--muted); flex-shrink: 0; width: 14px; text-align: center; }
 .meal-list { min-height: 4px; }
 .meal-row {
   display: flex; align-items: center; gap: 8px; padding: 7px 0;

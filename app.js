@@ -203,9 +203,16 @@ async function renderDay(date) {
   const plan = await getPlanCompat(date);
   const recipes = await listRecipes();
   const recipeMap = new Map(recipes.map(r => [r.id, r]));
+  // 展开状态按日期隔离：换天就重置
+  if (window._dayExpDate !== date) { window._dayExp = {}; window._dayExpDate = date; }
+  if (!window._dayExp) window._dayExp = {};
   let slots = '';
   for (const [key, label, color] of MEAL_SLOTS) {
     const entries = plan[key] || [];
+    // 有内容的默认展开（除非用户手动收过）；空的默认收起（除非用户手动展开过）
+    let expanded = window._dayExp[key];
+    if (expanded === undefined) expanded = entries.length > 0;
+    window._dayExp[key] = expanded;
     let rows = '';
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
@@ -215,31 +222,46 @@ async function renderDay(date) {
       const kcalTxt = (isRecipe && kcal && kcal.matched) ? ` <span class="meal-kcal">${kcal.total}kcal</span>` : '';
       rows += `<div class="meal-row">
         <span class="meal-dot" style="background:${color}"></span>
-        <span class="meal-name ${isRecipe?'':''}">${isRecipe?'🍳 ':''}${esc(txt)}${kcalTxt}</span>
+        <span class="meal-name">${isRecipe?'🍳 ':''}${esc(txt)}${kcalTxt}</span>
         <button class="meal-x" onclick="dayRemove('${date}','${key}',${i})">✕</button>
       </div>`;
     }
     const empty = !entries.length ? `<div class="meal-empty">还没安排</div>` : '';
-    slots += `<div class="meal-slot" style="border-left:4px solid ${color}">
-      <div class="meal-head"><span class="meal-label" style="color:${color}">${label}</span>
-        <span class="meal-count">${entries.length?entries.length+'项':''}</span></div>
-      <div class="meal-list">${rows}${empty}</div>
+    const body = `<div class="meal-list">${rows}${empty}</div>
       <div class="meal-actions">
         <button class="meal-add" onclick="dayAddRecipe('${date}','${key}')">+ 选菜谱</button>
         <button class="meal-add" onclick="dayAddFree('${date}','${key}')">+ 自定义</button>
+      </div>`;
+    slots += `<div class="meal-slot ${expanded?'open':'closed'}" style="border-left:4px solid ${color}">
+      <div class="meal-head" onclick="toggleMealSlot('${key}')">
+        <span class="meal-label" style="color:${color}">${label}</span>
+        <span class="meal-count">${entries.length?entries.length+'项':'<span class="meal-add-hint">+ 添加</span>'}</span>
+        <span class="meal-caret">${expanded?'▾':'▸'}</span>
       </div>
+      ${expanded ? body : ''}
     </div>`;
   }
   const totalKcal = await (async () => { const agg = await aggregateIngredients([plan]); return agg; })();
   $app.innerHTML = `
     <div class="day-banner">
       <div class="day-banner-d">${fmtDate(date)}</div>
-      <div class="day-banner-s">点下方各餐添加 · 颜色与日历一致</div>
+      <div class="day-banner-s">点餐次展开添加 · 底部可生成备菜清单</div>
     </div>
     ${slots}
     <button class="btn" onclick="dayGenList('${date}')">🛒 生成这天的备菜清单</button>
     <button class="btn ghost" onclick="history.back()" style="margin-top:8px">返回日历</button>
   `;
+}
+function toggleMealSlot(key) {
+  if (!window._dayExp) window._dayExp = {};
+  window._dayExp[key] = !window._dayExp[key];
+  // 只重渲染餐次列表，不重建整个 DOM，避免输入态丢失
+  renderDayKeepScroll(location.hash.slice('/day/'.length));
+}
+let _dayScrollY = 0;
+function renderDayKeepScroll(date) {
+  _dayScrollY = window.scrollY;
+  renderDay(date).then(() => { window.scrollTo(0, _dayScrollY); });
 }
 
 async function dayAddRecipe(date, key) {
@@ -255,7 +277,9 @@ async function dayAddRecipe(date, key) {
   document.body.appendChild(m);
   m.querySelector('#pick-ok').onclick = async () => {
     plan[key].push({ type: 'recipe', recipeId: m.querySelector('#pick-sel').value });
-    await savePlan(plan); m.remove(); renderDay(date);
+    await savePlan(plan); m.remove();
+    if (window._dayExp) window._dayExp[key] = true; // 加完后展开该餐次
+    renderDayKeepScroll(date);
   };
 }
 async function dayAddFree(date, key) {
@@ -268,13 +292,15 @@ async function dayAddFree(date, key) {
   m.querySelector('#free-ok').onclick = async () => {
     const t = m.querySelector('#free-txt').value.trim();
     if (!t) return; plan[key].push({ type: 'free', text: t });
-    await savePlan(plan); m.remove(); renderDay(date);
+    await savePlan(plan); m.remove();
+    if (window._dayExp) window._dayExp[key] = true;
+    renderDayKeepScroll(date);
   };
 }
 async function dayRemove(date, key, idx) {
   const plan = await getPlanCompat(date);
   plan[key].splice(idx, 1);
-  await savePlan(plan); renderDay(date);
+  await savePlan(plan); renderDayKeepScroll(date);
 }
 async function dayGenList(date) {
   const plan = await getPlanCompat(date);
