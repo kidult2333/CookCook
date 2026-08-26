@@ -131,6 +131,23 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 .search-bar { margin-bottom: 10px; }
 .search-bar input { padding: 9px 12px; }
 
+/* 菜谱筛选行 + 标签多选浮层 */
+.rec-filter-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.tag-toggle.on { background: var(--accent) !important; color: #fff !important; border-style: solid !important; }
+.tag-picker {
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; margin-bottom: 12px; box-shadow: var(--shadow);
+}
+.tp-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.tp-clear { background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+.tp-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tp-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.tp-item input { display: none; }
+.tp-chip { font-size: 13px; padding: 5px 11px; border-radius: 14px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+.tp-item.on .tp-chip { background: var(--bg); color: var(--fg); border-color: var(--fg); font-weight: 600; }
+.tp-empty { font-size: 13px; color: var(--muted); }
+.tp-foot { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
 /* 收藏星 / 置顶 / 做过 标记 */
 .rec-fav { color: #d8c9a0; font-size: 16px; cursor: pointer; flex-shrink: 0; line-height: 1; user-select: none; }
 .rec-fav.on { color: #e0a93a; }

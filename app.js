@@ -254,7 +254,8 @@ async function renderDay(date) {
 function toggleMealSlot(key) {
   // 单选展开：点已展开的→收起；点别的→展开它、收起原来的
   window._dayExpKey = (window._dayExpKey === key) ? null : key;
-  renderDayKeepScroll(location.hash.slice('/day/'.length));
+  // 注意 location.hash 带前导 #，要先 slice(1) 去掉再取 date，否则 date 会带 / 变成 NaN
+  renderDayKeepScroll(location.hash.slice(1).slice('/day/'.length));
 }
 let _dayScrollY = 0;
 function renderDayKeepScroll(date) {
@@ -417,26 +418,101 @@ async function renderRecipes() {
       <button class="fab" onclick="location.hash='/recipe/new'">＋</button>`;
     return;
   }
-  // 框架：搜索框 + 筛选条 + 列表容器（列表容器单独刷新，搜索框不被重画）
+  if (!window._recipeTags) window._recipeTags = [];
+  const selTags = window._recipeTags;
+  const tagBtnLabel = selTags.length ? `标签 ${selTags.length} 选 ▾` : '标签 ▾';
+  const tagBtnOn = selTags.length > 0;
+  // 框架：搜索框 + 筛选条 + 切换浮层 + 列表容器（列表容器单独刷新，搜索框不被重画）
   $app.innerHTML = `
     <div class="card">
       <div class="search-bar"><input id="rec-search" placeholder="🔍 搜菜谱名或食材" value="${esc(recipeSearch)}" oninput="setRecipeSearch(this.value)"></div>
-      <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px">
+      <div class="rec-filter-row">
         <button class="add-mini" style="background:${recipeFilterMode==='all'?'var(--accent)':'var(--card)'};color:${recipeFilterMode==='all'?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('all')">全部</button>
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
+        ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
       </div>
-      ${allTags.length ? `<div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px">
-        <button class="add-mini" style="background:${(window._recipeFilter||'')===''?'var(--accent)':'var(--card)'};color:${(window._recipeFilter||'')===''?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="window._recipeFilter='';refreshRecipeList()">全部标签</button>
-        ${allTags.map(t => {
-          const [bg, fg] = tagColor(t);
-          const on = (window._recipeFilter||'') === t;
-          return `<button class="add-mini" style="background:${on?fg:bg};color:${on?'#fff':fg};border:1px solid ${fg}" onclick="window._recipeFilter='${esc(t)}';refreshRecipeList()">${esc(t)}</button>`;
-        }).join('')}
-      </div>` : ''}
+      <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
     </div>
     <button class="fab" onclick="location.hash='/recipe/new'">＋</button>`;
+  refreshRecipeList();
+  drawTagPicker();
+}
+
+// 标签多选浮层：展开/收起 + 渲染 checkbox 列表
+function toggleTagPicker() {
+  const p = document.getElementById('tag-picker');
+  if (!p) return;
+  p.style.display = (p.style.display === 'none') ? 'block' : 'none';
+  if (p.style.display === 'block') drawTagPicker();
+}
+function drawTagPicker() {
+  const p = document.getElementById('tag-picker');
+  if (!p) return;
+  // 重新取最新标签（菜谱可能增删过）
+  listRecipes().then(rs => {
+    const all = [...new Set(rs.flatMap(r => r.tags || []))];
+    const sel = window._recipeTags || [];
+    p.innerHTML = `
+      <div class="tp-head">
+        <span>勾选标签筛选（可多选，含任一即显示）</span>
+        <button class="tp-clear" onclick="clearRecipeTags()">${sel.length?'清空':''}</button>
+      </div>
+      <div class="tp-list">
+        ${all.length ? all.map(t => {
+          const [bg, fg] = tagColor(t);
+          const on = sel.includes(t);
+          return `<label class="tp-item ${on?'on':''}" style="--bg:${bg};--fg:${fg}">
+            <input type="checkbox" ${on?'checked':''} onchange="toggleRecipeTag('${esc(t)}')">
+            <span class="tp-chip">${esc(t)}</span>
+          </label>`;
+        }).join('') : '<div class="tp-empty">还没有标签，编辑菜谱时可加</div>'}
+      </div>
+      <div class="tp-foot">${sel.length?`已选 ${sel.length} 个`:'未选（不过滤）'}</div>`;
+  });
+}
+function toggleRecipeTag(t) {
+  if (!window._recipeTags) window._recipeTags = [];
+  const i = window._recipeTags.indexOf(t);
+  if (i >= 0) window._recipeTags.splice(i, 1);
+  else window._recipeTags.push(t);
+  // 只更新该 checkbox 项的选中态，不重画整个浮层（避免闪烁）
+  const items = document.querySelectorAll('#tag-picker .tp-item');
+  items.forEach(item => {
+    const chip = item.querySelector('.tp-chip');
+    if (chip && chip.textContent === t) {
+      const on = window._recipeTags.includes(t);
+      item.classList.toggle('on', on);
+      const cb = item.querySelector('input'); if (cb) cb.checked = on;
+    }
+  });
+  // 更新底部计数 + 顶部按钮
+  const foot = document.querySelector('#tag-picker .tp-foot');
+  if (foot) foot.textContent = window._recipeTags.length ? `已选 ${window._recipeTags.length} 个` : '未选（不过滤）';
+  const head = document.querySelector('#tag-picker .tp-head');
+  if (head) { const clear = head.querySelector('.tp-clear'); if (clear) clear.textContent = window._recipeTags.length ? '清空' : ''; }
+  updateTagToggleBtn();
+  refreshRecipeList();
+}
+function updateTagToggleBtn() {
+  const btn = document.querySelector('.tag-toggle');
+  if (!btn) return;
+  const n = (window._recipeTags || []).length;
+  btn.textContent = n ? `标签 ${n} 选 ▾` : '标签 ▾';
+  btn.classList.toggle('on', n > 0);
+}
+function clearRecipeTags() {
+  window._recipeTags = [];
+  document.querySelectorAll('#tag-picker .tp-item').forEach(item => {
+    item.classList.remove('on');
+    const cb = item.querySelector('input'); if (cb) cb.checked = false;
+  });
+  const foot = document.querySelector('#tag-picker .tp-foot');
+  if (foot) foot.textContent = '未选（不过滤）';
+  const clear = document.querySelector('#tag-picker .tp-clear');
+  if (clear) clear.textContent = '';
+  updateTagToggleBtn();
   refreshRecipeList();
 }
 
@@ -446,7 +522,7 @@ async function refreshRecipeList() {
   if (!box) return;
   const recipes = await listRecipes();
   const q = recipeSearch.trim();
-  const activeTag = window._recipeFilter || '';
+  const activeTags = window._recipeTags || [];
   let filtered = recipes;
   if (q) {
     // 模糊匹配：标题或任一食材名包含搜索词（大小写不敏感，中文同样适用）
@@ -456,7 +532,7 @@ async function refreshRecipeList() {
       return (r.ingredients || []).some(i => (i.name || '').toLowerCase().includes(ql));
     });
   }
-  if (activeTag) filtered = filtered.filter(r => (r.tags || []).includes(activeTag));
+  if (activeTags.length) filtered = filtered.filter(r => (r.tags || []).some(t => activeTags.includes(t)));
   if (recipeFilterMode === 'fav') filtered = filtered.filter(r => r.fav);
   if (recipeFilterMode === 'cooked') filtered = filtered.filter(r => r.cooked);
   // 排序：置顶 → 做过 → 收藏 → 新建倒序
