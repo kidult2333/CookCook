@@ -65,7 +65,7 @@ function route() {
   else if (hash.startsWith('/recipes')) { setTitle('菜谱'); renderRecipes(); }
   else if (hash.startsWith('/recipe/new')) { setTitle('新建菜谱'); renderRecipeEdit(null); }
   else if (hash.startsWith('/recipe/')) { setTitle('菜谱详情'); renderRecipeDetail(hash.slice('/recipe/'.length)); }
-  else if (hash.startsWith('/import')) { setTitle('导入菜谱'); renderImport(); }
+  else if (hash.startsWith('/import')) { location.hash = '/recipe/new'; return; } // 已合并进新建菜谱页
   else if (hash.startsWith('/pantry')) { setTitle('食材库'); renderPantry(); }
   else if (hash.startsWith('/shopping')) { setTitle('购物清单'); renderShopping(); }
   else if (hash.startsWith('/more')) { setTitle('更多'); renderMore(); }
@@ -92,7 +92,7 @@ $more.addEventListener('click', (e) => {
   if (document.getElementById('more-menu')) { closeMoreMenu(); return; }
   const m = el(`<div id="more-menu" class="card" style="position:fixed;top:52px;right:8px;z-index:30;width:180px;padding:6px">
     <a href="#/more" style="display:block;padding:10px;border-radius:8px;color:var(--text);text-decoration:none">数据备份 / 关于</a>
-    <a href="#/import" style="display:block;padding:10px;border-radius:8px;color:var(--text);text-decoration:none">从小红书导入</a>
+    <a href="#/recipe/new" style="display:block;padding:10px;border-radius:8px;color:var(--text);text-decoration:none">新建菜谱（含粘贴识别）</a>
   </div>`);
   document.body.appendChild(m);
 });
@@ -203,16 +203,16 @@ async function renderDay(date) {
   const plan = await getPlanCompat(date);
   const recipes = await listRecipes();
   const recipeMap = new Map(recipes.map(r => [r.id, r]));
-  // 展开状态按日期隔离：换天就重置
-  if (window._dayExpDate !== date) { window._dayExp = {}; window._dayExpDate = date; }
-  if (!window._dayExp) window._dayExp = {};
+  // 单选展开：同一时间只展开一个餐次。换天重置；默认展开第一个有内容的餐次（没有就全收起）
+  if (window._dayExpDate !== date) {
+    window._dayExpDate = date;
+    window._dayExpKey = null;
+    for (const [key] of MEAL_SLOTS) { if ((plan[key] || []).length) { window._dayExpKey = key; break; } }
+  }
   let slots = '';
   for (const [key, label, color] of MEAL_SLOTS) {
     const entries = plan[key] || [];
-    // 有内容的默认展开（除非用户手动收过）；空的默认收起（除非用户手动展开过）
-    let expanded = window._dayExp[key];
-    if (expanded === undefined) expanded = entries.length > 0;
-    window._dayExp[key] = expanded;
+    const expanded = window._dayExpKey === key;
     let rows = '';
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
@@ -245,7 +245,6 @@ async function renderDay(date) {
   $app.innerHTML = `
     <div class="day-banner">
       <div class="day-banner-d">${fmtDate(date)}</div>
-      <div class="day-banner-s">点餐次展开添加 · 底部可生成备菜清单</div>
     </div>
     ${slots}
     <button class="btn" onclick="dayGenList('${date}')">🛒 生成这天的备菜清单</button>
@@ -253,9 +252,8 @@ async function renderDay(date) {
   `;
 }
 function toggleMealSlot(key) {
-  if (!window._dayExp) window._dayExp = {};
-  window._dayExp[key] = !window._dayExp[key];
-  // 只重渲染餐次列表，不重建整个 DOM，避免输入态丢失
+  // 单选展开：点已展开的→收起；点别的→展开它、收起原来的
+  window._dayExpKey = (window._dayExpKey === key) ? null : key;
   renderDayKeepScroll(location.hash.slice('/day/'.length));
 }
 let _dayScrollY = 0;
@@ -278,7 +276,7 @@ async function dayAddRecipe(date, key) {
   m.querySelector('#pick-ok').onclick = async () => {
     plan[key].push({ type: 'recipe', recipeId: m.querySelector('#pick-sel').value });
     await savePlan(plan); m.remove();
-    if (window._dayExp) window._dayExp[key] = true; // 加完后展开该餐次
+    window._dayExpKey = key; // 加完后展开该餐次
     renderDayKeepScroll(date);
   };
 }
@@ -293,7 +291,7 @@ async function dayAddFree(date, key) {
     const t = m.querySelector('#free-txt').value.trim();
     if (!t) return; plan[key].push({ type: 'free', text: t });
     await savePlan(plan); m.remove();
-    if (window._dayExp) window._dayExp[key] = true;
+    window._dayExpKey = key;
     renderDayKeepScroll(date);
   };
 }
@@ -415,19 +413,12 @@ async function renderRecipes() {
   };
   if (!recipes.length) {
     $app.innerHTML = `
-      <div class="row" style="margin-bottom:12px">
-        <button class="btn secondary" onclick="location.hash='/import'">从链接/文本导入</button>
-        <button class="btn" onclick="location.hash='/recipe/new'">手动新建</button>
-      </div>
-      <div class="card"><div class="empty"><div class="big">🍳</div>还没有菜谱<br>点下面导入或新建</div></div>`;
+      <div class="card"><div class="empty"><div class="big">🍳</div>还没有菜谱<br>点右下角 ＋ 新建一道</div></div>
+      <button class="fab" onclick="location.hash='/recipe/new'">＋</button>`;
     return;
   }
   // 框架：搜索框 + 筛选条 + 列表容器（列表容器单独刷新，搜索框不被重画）
   $app.innerHTML = `
-    <div class="row" style="margin-bottom:12px">
-      <button class="btn secondary" onclick="location.hash='/import'">从链接/文本导入</button>
-      <button class="btn" onclick="location.hash='/recipe/new'">手动新建</button>
-    </div>
     <div class="card">
       <div class="search-bar"><input id="rec-search" placeholder="🔍 搜菜谱名或食材" value="${esc(recipeSearch)}" oninput="setRecipeSearch(this.value)"></div>
       <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px">
@@ -444,7 +435,8 @@ async function renderRecipes() {
         }).join('')}
       </div>` : ''}
       <div id="rec-list"></div>
-    </div>`;
+    </div>
+    <button class="fab" onclick="location.hash='/recipe/new'">＋</button>`;
   refreshRecipeList();
 }
 
@@ -573,6 +565,11 @@ function drawRecipeEditor() {
   const presetBtns = PRESET_TAGS.map(t => `<button type="button" class="add-mini" style="margin:2px" onclick="if(!editState.tags.includes('${t}')){editState.tags.push('${t}');drawRecipeEditor();}">${t}</button>`).join(' ');
   const parseHint = (s._parsed && (s.ingredients.length || s.steps.length)) ? `<div class="banner" style="background:#e8f5e1;color:#3a7d2a;border-color:#c5e3b6">✓ 已识别：${s.ingredients.length} 样食材${s.steps.length ? `、${s.steps.length} 步做法` : ''}，下面可继续改</div>` : '';
   $app.innerHTML = `
+    <div class="banner">新建菜谱：粘贴小红书文本可自动识别填入，也可直接手动填。视频菜谱步骤可留空。</div>
+    <div class="section-title">⚡ 粘贴文本自动识别（可选）</div>
+    <textarea id="ed-text" placeholder="把小红书截图用「实况文本」复制的文字粘这里&#10;支持食材 + 做法，自动拆分填入下面&#10;例：&#10;食材：&#10;番茄 2个&#10;鸡蛋 3个&#10;做法：&#10;1. 番茄切块&#10;2. 鸡蛋打散炒熟"></textarea>
+    <button class="btn secondary" style="margin-top:8px" onclick="editParse()">🔍 识别并填入</button>
+    ${parseHint}
     <label>菜谱标题</label><input id="ed-title" value="${esc(s.title)}" oninput="editState.title=this.value">
     <label>链接（可选，跳转看做法）</label><input id="ed-link" value="${esc(s.link)}" oninput="editState.link=this.value" placeholder="https://www.xiaohongshu.com/...">
     <label>标签（轻食/减脂/辣口…，可自定义）</label>
@@ -581,10 +578,6 @@ function drawRecipeEditor() {
     <div style="margin:6px 0">${presetBtns}</div>
     <label>配图（从相册选）</label>
     <div class="img-pick">${imgs}<label class="add" for="ed-img">＋<input type="file" id="ed-img" accept="image/*" multiple style="display:none" onchange="addEditImgs(this.files)"></label></div>
-    <div class="section-title">⚡ 粘贴文本自动识别（可选）</div>
-    <textarea id="ed-text" placeholder="粘贴小红书截图实况文本，自动拆分填入下面&#10;支持食材 + 做法"></textarea>
-    <button class="btn secondary" style="margin-top:8px" onclick="editParse()">🔍 识别并填入</button>
-    ${parseHint}
     <div class="section-title">食材</div>
     ${ingRows || '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">点下面加，或上面粘贴文本识别</div>'}
     <button class="btn ghost" onclick="editState.ingredients.push({name:'',amount:'',unit:''});drawRecipeEditor()" style="margin-top:6px">+ 加一行食材</button>
@@ -847,10 +840,10 @@ async function renderPantry() {
     }).join('');
   }
   $app.innerHTML = `${banner}
-    <button class="btn secondary" onclick="editPantry()" style="margin-bottom:12px">+ 添加食材</button>
     ${stateBar}
     ${filterBar}
-    <div>${list}</div>`;
+    <div>${list}</div>
+    <button class="fab" onclick="editPantry()">＋</button>`;
 }
 async function editPantry(id) {
   let item = id ? await dbGet('pantry', id) : { name: '', quantity: '', unit: '', expiryDate: '', purchaseDate: '', tags: [], image: null };
