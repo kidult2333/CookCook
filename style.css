@@ -300,9 +300,16 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 .dl.green { color: var(--green); } .dl.none { color: var(--muted); font-weight: 500; }
 
 /* shopping */
+.shop-summary {
+  background: var(--card); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
+  box-shadow: var(--shadow); border: 1px solid var(--line);
+}
+.shop-sum-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.shop-sum-label { font-size: 14px; font-weight: 700; color: var(--text); }
+.shop-sum-num { font-size: 18px; font-weight: 700; color: var(--green); }
 .shop-prog { height: 8px; background: var(--line); border-radius: 6px; overflow: hidden; margin-bottom: 4px; }
 .shop-prog-fill { height: 100%; background: var(--green); border-radius: 6px; transition: width .3s; }
-.shop-prog-t { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.shop-prog-t { font-size: 12px; color: var(--muted); }
 .shop-sec {
   display: flex; align-items: center; font-size: 13px; font-weight: 700;
   margin: 14px 2px 8px; color: var(--text);

@@ -911,7 +911,11 @@ async function renderShopping() {
   let progress = '';
   if (items.length) {
     const pct = Math.round(bought.length / items.length * 100);
-    progress = `<div class="shop-prog"><div class="shop-prog-fill" style="width:${pct}%"></div></div><div class="shop-prog-t">${bought.length}/${items.length} 已购 · ${pct}%</div>`;
+    progress = `<div class="shop-summary">
+      <div class="shop-sum-head"><span class="shop-sum-label">已购</span><span class="shop-sum-num">${bought.length}/${items.length}</span></div>
+      <div class="shop-prog"><div class="shop-prog-fill" style="width:${pct}%"></div></div>
+      <div class="shop-prog-t">${pct}% 完成 · 还差 ${todo.length} 项</div>
+    </div>`;
   }
   let list = '';
   if (!items.length) {
