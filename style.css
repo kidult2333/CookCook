@@ -66,16 +66,33 @@ body {
 }
 .tab.active .tab-ico { transform: scale(1.15); }
 
-/* 浮动加号按钮（菜谱/食材库右下角） */
+/* 浮动加号按钮（菜谱/食材库底部居中） */
 .fab {
-  position: fixed; right: 18px; bottom: calc(76px + var(--safe-bottom));
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(76px + var(--safe-bottom));
   width: 52px; height: 52px; border-radius: 50%; border: none;
   background: var(--accent); color: #fff; font-size: 28px; font-weight: 300;
   line-height: 1; box-shadow: 0 4px 12px rgba(232,148,58,.4); z-index: 9;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: transform .12s;
 }
-.fab:active { transform: scale(.92); background: var(--accent-d); }
+.fab:active { transform: translateX(-50%) scale(.92); background: var(--accent-d); }
+
+/* 浮动操作栏（购物：多按钮居中） */
+.fab-bar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(76px + var(--safe-bottom)); z-index: 9;
+  display: flex; gap: 10px; align-items: center;
+}
+.fab-bar .fab-pill {
+  border: none; border-radius: 22px; padding: 11px 18px; font-size: 14px; font-weight: 600;
+  cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.12);
+}
+.fab-bar .fab-pill.add { background: var(--accent); color: #fff; }
+.fab-bar .fab-pill.add:active { background: var(--accent-d); }
+.fab-bar .fab-pill.clear { background: var(--card); color: var(--text); }
+.fab-bar .fab-pill.clear:active { background: var(--bg); }
+.fab-bar .fab-pill:disabled { opacity: .45; box-shadow: none; }
 
 /* generic UI */
 .card { background: var(--card); border-radius: 12px; box-shadow: var(--shadow); padding: 14px; margin-bottom: 12px; }

@@ -933,11 +933,11 @@ async function renderShopping() {
   }
   $app.innerHTML = `
     ${progress}
-    <div class="row" style="margin:12px 0">
-      <button class="btn secondary" onclick="shopAddManual()">+ 手动加一项</button>
-      <button class="btn ghost" onclick="shopClearChecked()" ${bought.length ? '' : 'disabled'}>清理已购(${bought.length})</button>
-    </div>
     <div>${list}</div>
+    <div class="fab-bar">
+      <button class="fab-pill add" onclick="shopAddManual()">＋ 手动加一项</button>
+      <button class="fab-pill clear" onclick="shopClearChecked()" ${bought.length ? '' : 'disabled'}>清理已购${bought.length?'('+bought.length+')':''}</button>
+    </div>
   `;
 }
 async function shopToggle(id) { const i = await dbGet('shopping', id); i.checked = !i.checked; await saveShopping(i); renderShopping(); }
