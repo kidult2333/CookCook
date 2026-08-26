@@ -494,7 +494,6 @@ async function renderRecipeDetail(id) {
     const kcalTxt = k.matched && k.kcal != null ? `<span class="qty">${k.kcal} kcal${k.approx ? '~' : ''}</span>` : `<span class="qty" style="color:var(--muted)">—</span>`;
     return `<div class="meal-entry"><span>${esc(i.name)} <span class="qty">${esc(i.amount||'')}${esc(i.unit||'')}</span></span>${kcalTxt}</div>`;
   }).join('');
-  let steps = (r.steps || []).map((s, i) => `<div style="margin-bottom:6px"><b>${i + 1}.</b> ${esc(s.text || s)}</div>`).join('');
   const linkBlock = r.link ? `<div class="link-box"><div class="link-label">小红书链接 · 点复制去 app 里看</div><div class="link-row"><input class="link-text" value="${esc(r.link)}" readonly onclick="this.select()"><button class="link-copy" onclick="copyLink('${esc(r.link)}')">复制</button></div></div>` : '';
   const tagRow = (r.tags && r.tags.length) ? `<div style="margin:8px 0">${r.tags.map(tagChipRO).join('')}</div>` : '';
   const unmatchedHint = kcal.unmatched.length ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">未估算：${kcal.unmatched.map(esc).join('、')}</div>` : '';
@@ -520,7 +519,6 @@ async function renderRecipeDetail(id) {
     ${imgs}
     <div class="section-title">食材</div><div class="card">${ings || '<div class="empty">无</div>'}</div>
     ${kcalBlock}
-    ${steps ? `<div class="section-title">步骤</div><div class="card">${steps}</div>` : ''}
     <div class="row" style="margin-top:12px">
       <button class="btn secondary" onclick="editRecipe('${id}')">编辑</button>
       <button class="btn danger" onclick="delRecipe('${id}')">删除</button>
