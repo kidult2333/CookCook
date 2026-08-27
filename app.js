@@ -73,6 +73,8 @@ function route() {
   closeMoreMenu();
   // 离开选菜模式:清加购态 + 移除底部篮条(篮子数据保留,只是不显示)
   if (!hash.startsWith('/pick')) { pickLeave(); cartBarRemove(); }
+  // 离开餐单页:重置编辑态,避免"点了编辑没完成就返回"后,再点日历任何一天都进编辑态
+  if (!hash.startsWith('/day/')) { window._dayEditMode = false; }
   if (hash.startsWith('/calendar')) { setTitle('日历'); renderCalendar(); }
   else if (hash.startsWith('/day/')) { setTitle('餐单'); renderDay(hash.slice('/day/'.length)); }
   else if (hash.startsWith('/recipes')) { setTitle('菜谱'); renderRecipes(); }
@@ -118,8 +120,8 @@ let calCursor = ymd(new Date()); // 光标：当前周的某一天(YYYY-MM-DD)
 
 function weekDays(anchor) {
   const d = new Date(anchor + 'T00:00:00');
-  const dow = d.getDay(); // 0=Sun
-  d.setDate(d.getDate() - dow);
+  const offset = (d.getDay() + 6) % 7; // 周一为周首:周一=0...周日=6(原getDay 0=周日)
+  d.setDate(d.getDate() - offset);
   const out = [];
   for (let i = 0; i < 7; i++) {
     const x = new Date(d); x.setDate(d.getDate() + i);
@@ -257,28 +259,28 @@ async function renderDay(date) {
         ${expanded ? body : ''}
       </div>`;
     } else {
-      // ===== 查看态:全展开,只读,菜谱带缩略图,无✕无加菜按钮 =====
-      let rows = '';
-      if (entries.length) {
-        rows = entries.map(e => {
-          const isRecipe = e.type === 'recipe';
-          if (isRecipe) {
-            const r = recipeMap.get(e.recipeId);
-            const title = r?.title || '（菜谱已删除）';
-            const thumb = r?.images?.[0] ? `<img class="dv-thumb" src="${imgURL(r.images[0])}">` : `<div class="dv-thumb dv-thumb-empty">🍳</div>`;
-            return `<div class="dv-row" onclick="location.hash='/recipe/${e.recipeId}'">${thumb}<span class="dv-name">${esc(title)}</span></div>`;
-          }
-          return `<div class="dv-row"><div class="dv-thumb dv-thumb-empty">🍽️</div><span class="dv-name">${esc(e.text)}</span></div>`;
-        }).join('');
-      } else {
-        rows = `<div class="dv-empty">—</div>`;
-      }
+      // ===== 查看态:只显示有内容的餐次,只读,菜谱带大缩略图,无✕无加菜按钮 =====
+      if (!entries.length) continue; // 没加菜的餐次不显示,省地方
+      const rows = entries.map(e => {
+        const isRecipe = e.type === 'recipe';
+        if (isRecipe) {
+          const r = recipeMap.get(e.recipeId);
+          const title = r?.title || '（菜谱已删除）';
+          const thumb = r?.images?.[0] ? `<img class="dv-thumb" src="${imgURL(r.images[0])}">` : `<div class="dv-thumb dv-thumb-empty">🍳</div>`;
+          const ingCount = (r?.ingredients || []).length;
+          const sub = ingCount ? `<span class="dv-sub">${ingCount} 样食材</span>` : '';
+          return `<div class="dv-row" onclick="location.hash='/recipe/${e.recipeId}'">${thumb}<div class="dv-info"><span class="dv-name">${esc(title)}</span>${sub}</div></div>`;
+        }
+        return `<div class="dv-row"><div class="dv-thumb dv-thumb-empty">🍽️</div><div class="dv-info"><span class="dv-name">${esc(e.text)}</span><span class="dv-sub">自定义</span></div></div>`;
+      }).join('');
       slots += `<div class="dv-slot" style="border-left:4px solid ${color}">
-        <div class="dv-head"><span class="dv-label" style="color:${color}">${label}</span>${entries.length?`<span class="dv-count">${entries.length}</span>`:''}</div>
+        <div class="dv-head"><span class="dv-label" style="color:${color}">${label}</span><span class="dv-count">${entries.length}</span></div>
         <div class="dv-list">${rows}</div>
       </div>`;
     }
   }
+  // 全天没菜:给个空状态,不然页面只有顶部日期干巴巴
+  if (!editing && !slots) { slots = `<div class="dv-none"><div class="big">🍽️</div>这一天还没安排菜单<br>点右上 ✏️ 加几道</div>`; }
   // 编辑/完成按钮放顶部 banner 右侧,永远可见,不跟内容长度走
   const editBtn = editing
     ? `<button class="day-edit" onclick="dayDoneEdit()">✓</button>`
@@ -443,6 +445,7 @@ function starsPick(id, rating) {
 async function renderRecipes() {
   const recipes = await listRecipes();
   const allTags = [...new Set(recipes.flatMap(r => r.tags || []))];
+  window._knownTags = allTags; // 缓存已用标签,供编辑/导入页的标签按钮用
   const modeBtn = (m, label, icon) => {
     const on = recipeFilterMode === m;
     return `<button class="add-mini" style="background:${on?'var(--accent)':'var(--card)'};color:${on?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('${m}')">${icon} ${label}</button>`;
@@ -466,6 +469,7 @@ async function renderRecipes() {
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
+        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'👁‍🗨 卡路里'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
@@ -504,6 +508,7 @@ async function renderPick() {
   const d = window._pickDefault || {};
   const hint = (d.date && d.meal) ? `正在为 ${fmtDate(d.date)} 的 ${({breakfast:'早餐',morning_snack:'早加餐',lunch:'午餐',afternoon_snack:'午加餐',dinner:'晚餐',evening_snack:'晚加餐'}[d.meal])} 选菜` : '选菜加购,稍后统一分配到餐';
   const allTags = [...new Set(recipes.flatMap(r => r.tags || []))];
+  window._knownTags = allTags; // 缓存已用标签,供编辑/导入页的标签按钮用
   if (!window._recipeTags) window._recipeTags = [];
   const selTags = window._recipeTags;
   const tagBtnLabel = selTags.length ? `标签 ${selTags.length} 选 ▾` : '标签 ▾';
@@ -521,6 +526,7 @@ async function renderPick() {
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
+        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'👁‍🗨 卡路里'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
@@ -756,22 +762,26 @@ async function renderRecipeDetail(id) {
   const r = await getRecipe(id);
   if (!r) { $app.innerHTML = `<div class="empty">菜谱不存在</div><button class="btn ghost" onclick="history.back()">返回</button>`; return; }
   let imgs = (r.images || []).map(b => `<img src="${imgURL(b)}" style="width:100%;border-radius:12px;margin-bottom:8px">`).join('');
-  // 食材 + 每项卡路里（受全局 showKcal 开关控制）
+  // 食材 + 每项卡路里（受全局 showKcal 开关控制）— 两列对齐清单
   const kcal = recipeKcal(r.ingredients || []);
-  let ings = (r.ingredients || []).map(i => {
+  let ings = (r.ingredients || []).map((i, idx) => {
     const k = estimateIngredientKcal(i);
-    const kcalTxt = (showKcal && k.matched && k.kcal != null) ? `<span class="qty">${k.kcal} kcal${k.approx ? '~' : ''}</span>` : (showKcal ? `<span class="qty" style="color:var(--muted)">—</span>` : '');
-    return `<div class="meal-entry"><span>${esc(i.name)} <span class="qty">${esc(i.amount||'')}${esc(i.unit||'')}</span></span>${kcalTxt}</div>`;
+    const kcalTxt = (showKcal && k.matched && k.kcal != null) ? `<span class="ing-kcal">${k.kcal} kcal${k.approx ? '~' : ''}</span>` : (showKcal ? `<span class="ing-kcal ing-kcal-na">—</span>` : '');
+    return `<div class="ing-row">
+      <span class="ing-idx">${idx + 1}</span>
+      <span class="ing-name">${esc(i.name)}</span>
+      <span class="ing-amount">${esc(i.amount || '')}${esc(i.unit || '')}</span>
+      ${kcalTxt}
+    </div>`;
   }).join('');
   const linkBlock = r.link ? `<div class="link-box"><div class="link-label">小红书链接 · 点复制去 app 里看</div><div class="link-row"><input class="link-text" value="${esc(r.link)}" readonly onclick="this.select()"><button class="link-copy" onclick="copyLink('${esc(r.link)}')">复制</button></div></div>` : '';
   const tagRow = (r.tags && r.tags.length) ? `<div style="margin:8px 0">${r.tags.map(tagChipRO).join('')}</div>` : '';
   const unmatchedHint = kcal.unmatched.length ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">未估算：${kcal.unmatched.map(esc).join('、')}</div>` : '';
   const kcalBlock = (showKcal && kcal.matched) ? `<div class="section-title">估算热量</div><div class="card"><b style="font-size:20px;color:var(--accent)">${kcal.total}</b> kcal（整份，约 ${(kcal.total/230).toFixed(1)} 碗米饭）${unmatchedHint}</div>` : '';
-  // 标题栏：标题 + 卡路里眼睛 + 收藏/置顶按钮
+  // 标题栏：标题 + 收藏/置顶按钮（卡路里开关已挪到菜单主界面，统一控制）
   const titleBar = `<div class="rd-title-bar">
     <div class="rd-title">${esc(r.title)}</div>
     <div class="rd-actions">
-      <button class="rd-act" id="kcal-eye" onclick="toggleKcal()" title="${showKcal?'隐藏卡路里':'显示卡路里'}">${showKcal?'👁':'👁‍🗨'}</button>
       <button class="rd-act ${r.fav?'on':''}" onclick="toggleFavDetail('${id}')" title="收藏">${r.fav?'★':'☆'}</button>
       <button class="rd-act ${r.pinned?'on':''}" onclick="togglePinnedDetail('${id}')" title="置顶">📌</button>
     </div>
@@ -857,8 +867,11 @@ function drawRecipeEditor() {
     const [bg, fg] = tagColor(t);
     return `<span class="tag" style="background:${bg};color:${fg}">${esc(t)}<button class="x" style="font-size:13px;margin-left:4px;color:${fg}" onclick="editState.tags.splice(${idx},1);drawRecipeEditor()">✕</button></span>`;
   }).join('');
-  const PRESET_TAGS = ['轻食','减脂','辣口','清淡','高蛋白','低碳水','快手菜','早餐','午餐','晚餐','加餐','汤','主食','甜品'];
-  const presetBtns = PRESET_TAGS.map(t => `<button type="button" class="add-mini" style="margin:2px" onclick="if(!editState.tags.includes('${t}')){editState.tags.push('${t}');drawRecipeEditor();}">${t}</button>`).join(' ');
+  const PRESET_TAGS = ['轻食','减脂','辣口','清淡','重口','高蛋白','低碳水','快手菜','汤','主食','甜品'];
+  // 已用标签(从所有菜谱收集,去掉已在预设里的,去重) — 让自定义标签下次能直接点选,不用重输
+  const knownTags = (window._knownTags || []).filter(t => !PRESET_TAGS.includes(t));
+  const tagBtns = [...PRESET_TAGS, ...knownTags];
+  const presetBtns = tagBtns.map(t => `<button type="button" class="add-mini ${PRESET_TAGS.includes(t)?'':'tag-used'}" style="margin:2px" onclick="if(!editState.tags.includes('${esc(t)}')){editState.tags.push('${esc(t)}');drawRecipeEditor();}">${esc(t)}</button>`).join(' ');
   const parseHint = (s._parsed && (s.ingredients.length || s.steps.length)) ? `<div class="banner" style="background:#e8f5e1;color:#3a7d2a;border-color:#c5e3b6">✓ 已识别：${s.ingredients.length} 样食材${s.steps.length ? `、${s.steps.length} 步做法` : ''}，下面可继续改</div>` : '';
   $app.innerHTML = `
     <div class="banner">新建菜谱：粘贴小红书文本可自动识别填入，也可直接手动填。视频菜谱步骤可留空。</div>
@@ -957,8 +970,10 @@ function drawImport() {
     const [bg, fg] = tagColor(t);
     return `<span class="tag" style="background:${bg};color:${fg}">${esc(t)}<button class="x" style="font-size:13px;margin-left:4px;color:${fg}" onclick="importState.tags.splice(${idx},1);drawImport()">✕</button></span>`;
   }).join('');
-  const PRESET_TAGS = ['轻食','减脂','辣口','清淡','高蛋白','低碳水','快手菜','早餐','午餐','晚餐','加餐','汤','主食','甜品'];
-  const presetBtns = PRESET_TAGS.map(t => `<button type="button" class="add-mini" style="margin:2px" onclick="if(!importState.tags.includes('${t}')){importState.tags.push('${t}');drawImport();}">${t}</button>`).join(' ');
+  const PRESET_TAGS = ['轻食','减脂','辣口','清淡','重口','高蛋白','低碳水','快手菜','汤','主食','甜品'];
+  const knownTags = (window._knownTags || []).filter(t => !PRESET_TAGS.includes(t));
+  const tagBtns = [...PRESET_TAGS, ...knownTags];
+  const presetBtns = tagBtns.map(t => `<button type="button" class="add-mini ${PRESET_TAGS.includes(t)?'':'tag-used'}" style="margin:2px" onclick="if(!importState.tags.includes('${esc(t)}')){importState.tags.push('${esc(t)}');drawImport();}">${esc(t)}</button>`).join(' ');
   const parseHint = (s._parsed && (s.ingredients.length || s.steps.length)) ? `<div class="banner" style="background:#e8f5e1;color:#3a7d2a;border-color:#c5e3b6">✓ 已识别：${s.ingredients.length} 样食材${s.steps.length ? `、${s.steps.length} 步做法` : ''}，下面可继续改</div>` : '';
   $app.innerHTML = `
     <div class="banner">小红书导入：贴链接方便跳转看做法，食材/步骤可粘贴文本自动识别，也可手动改。视频菜谱步骤可留空，做法去小红书看。</div>
@@ -1141,7 +1156,9 @@ async function renderPantry() {
     if (noTag.length) sections.push({ key: '__none', label: '未分类', items: noTag, colored: false });
     list = sections.map(sec => {
       sec.items.sort((a, b) => (a.expiryDate || '9999').localeCompare(b.expiryDate || '9999'));
-      const open = window._pantryOpen.has(sec.key);
+      // 有筛选(标签或状态)时自动展开所有有内容的分组,避免选完下面空荡荡;无筛选时按手动 _pantryOpen
+      const filtering = pantryTagFilter || pantryStateFilter;
+      const open = filtering ? true : window._pantryOpen.has(sec.key);
       // 组内快过期数：用于角标提示
       const urgent = sec.items.filter(i => { const s = expiryState(i.expiryDate); return s === 'red' || s === 'yellow'; }).length;
       const [bg, fg] = sec.colored ? tagColor(sec.label) : ['#f0f0f0', '#888'];
