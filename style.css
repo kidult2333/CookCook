@@ -304,7 +304,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px
 .meal-add:active { border-color: var(--accent); color: var(--accent); }
 .add-mini { background: none; border: 1px dashed var(--accent); color: var(--accent); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
 .add-mini.tag-used { border-style: solid; border-color: var(--line); color: var(--muted); } /* 已用过的自定义标签:实线灰框,区别于预设虚线橙 */
-.add-mini.kcal-toggle { border-style: solid; margin-left: auto; }
+.add-mini.kcal-toggle { border-style: solid; }
 .add-mini.kcal-toggle.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* tag filter bar (pantry / recipes) */

@@ -8,7 +8,15 @@ const $more = document.getElementById('more-btn');
 // ---------- small helpers ----------
 function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
-function imgURL(blob) { return blob ? URL.createObjectURL(blob) : ''; }
+// 生成图片 object URL；记下来,渲染前统一 revoke,避免 iOS Safari 内存压力回收 Blob 导致图片丢失
+let _objURLs = [];
+function imgURL(blob) {
+  if (!blob) return '';
+  const u = URL.createObjectURL(blob);
+  _objURLs.push(u);
+  return u;
+}
+function revokeObjURLs() { _objURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); _objURLs = []; }
 // 复制文本到剪贴板（带 execCommand 兜底，iOS Safari 兼容）
 function copyLink(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -71,6 +79,7 @@ function route() {
   const hash = location.hash.slice(1) || '/calendar';
   const [path, ...rest] = hash.split('/');
   closeMoreMenu();
+  revokeObjURLs(); // 切页前释放上一页的图片 object URL,降内存压力
   // 离开选菜模式:清加购态 + 移除底部篮条(篮子数据保留,只是不显示)
   if (!hash.startsWith('/pick')) { pickLeave(); cartBarRemove(); }
   // 离开餐单页:重置编辑态,避免"点了编辑没完成就返回"后,再点日历任何一天都进编辑态
@@ -80,6 +89,7 @@ function route() {
   else if (hash.startsWith('/recipes')) { setTitle('菜谱'); renderRecipes(); }
   else if (hash.startsWith('/pick')) { setTitle('选菜加购'); renderPick(); }
   else if (hash.startsWith('/recipe/new')) { setTitle('新建菜谱'); renderRecipeEdit(null); }
+  else if (hash.startsWith('/recipe/') && hash.endsWith('/edit')) { setTitle('编辑菜谱'); renderRecipeEdit(hash.slice('/recipe/'.length, -'/edit'.length)); }
   else if (hash.startsWith('/recipe/')) { setTitle('菜谱详情'); renderRecipeDetail(hash.slice('/recipe/'.length)); }
   else if (hash.startsWith('/import')) { location.hash = '/recipe/new'; return; } // 已合并进新建菜谱页
   else if (hash.startsWith('/pantry')) { setTitle('食材库'); renderPantry(); }
@@ -834,7 +844,7 @@ function planRecipeDirect(id) {
     location.hash = `/day/${date}`;
   };
 }
-async function editRecipe(id) { renderRecipeEdit(id); }
+async function editRecipe(id) { location.hash = `/recipe/${id}/edit`; }
 async function delRecipe(id) {
   if (!confirm('确定删除这个菜谱？')) return;
   await deleteRecipe(id); location.hash = '/recipes';
@@ -846,13 +856,15 @@ let editState = null; // {id?, title, link, ingredients:[], steps:[], images:[],
 async function renderRecipeEdit(id) {
   if (id) {
     const r = await getRecipe(id);
-    editState = { id: r.id, title: r.title || '', link: r.link || '', ingredients: r.ingredients || [], steps: r.steps || [], images: r.images || [], tags: r.tags || [] };
+    // images 断开引用拷贝,避免 editState 与 DB 对象共享数组引用导致意外修改原记录
+    editState = { id: r.id, title: r.title || '', link: r.link || '', ingredients: (r.ingredients || []).map(i => ({ ...i })), steps: (r.steps || []).map(s => ({ ...s })), images: (r.images || []).slice(), tags: (r.tags || []).slice() };
   } else {
     editState = { title: '', link: '', ingredients: [], steps: [], images: [], tags: [] };
   }
   drawRecipeEditor();
 }
 function drawRecipeEditor() {
+  revokeObjURLs(); // 重渲染前释放上一轮的图片 object URL,防编辑页频繁重渲累积内存
   const s = editState;
   let ingRows = s.ingredients.map((i, idx) => `
     <div class="ing-edit-row"><input class="n" placeholder="食材" value="${esc(i.name)}" oninput="editState.ingredients[${idx}].name=this.value">
@@ -943,6 +955,8 @@ async function saveRecipeEdit() {
   if (!s.title.trim()) { alert('请填菜谱标题'); return; }
   s.ingredients = s.ingredients.filter(i => (i.name || '').trim());
   s.steps = s.steps.map((x, i) => ({ n: i + 1, text: (x.text || x || '').trim() })).filter(x => x.text);
+  // 过滤无效图片项(null/undefined/0),避免脏数据进 DB
+  s.images = (s.images || []).filter(b => b && (b.size || b.byteLength || b instanceof Blob));
   await saveRecipe(s);
   location.hash = '/recipes';
 }
@@ -956,6 +970,7 @@ function renderImport() {
   drawImport();
 }
 function drawImport() {
+  revokeObjURLs(); // 重渲染前释放上一轮的图片 object URL
   const s = importState;
   const ingRows = s.ingredients.map((i, idx) => `
     <div class="ing-edit-row"><input class="n" placeholder="食材名" value="${esc(i.name)}" oninput="importState.ingredients[${idx}].name=this.value">
