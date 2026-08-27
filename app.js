@@ -216,7 +216,8 @@ async function renderDay(date) {
   const plan = await getPlanCompat(date);
   const recipes = await listRecipes();
   const recipeMap = new Map(recipes.map(r => [r.id, r]));
-  // 单选展开：同一时间只展开一个餐次。换天重置；默认展开第一个有内容的餐次（没有就全收起）
+  const editing = window._dayEditMode;
+  // 单选展开(仅编辑态用)：换天重置；默认展开第一个有内容的餐次
   if (window._dayExpDate !== date) {
     window._dayExpDate = date;
     window._dayExpKey = null;
@@ -225,45 +226,77 @@ async function renderDay(date) {
   let slots = '';
   for (const [key, label, color] of MEAL_SLOTS) {
     const entries = plan[key] || [];
-    const expanded = window._dayExpKey === key;
-    let rows = '';
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
-      const isRecipe = e.type === 'recipe';
-      const txt = isRecipe ? (recipeMap.get(e.recipeId)?.title || '（菜谱已删除）') : e.text;
-      const kcal = isRecipe ? recipeKcal(recipeMap.get(e.recipeId)?.ingredients || []) : null;
-      const kcalTxt = (showKcal && isRecipe && kcal && kcal.matched) ? ` <span class="meal-kcal">${kcal.total}kcal</span>` : '';
-      rows += `<div class="meal-row">
-        <span class="meal-dot" style="background:${color}"></span>
-        <span class="meal-name">${isRecipe?'🍳 ':''}${esc(txt)}${kcalTxt}</span>
-        <button class="meal-x" onclick="dayRemove('${date}','${key}',${i})">✕</button>
+    if (editing) {
+      // ===== 编辑态:单选折叠 + ✕ + 加菜按钮(原样) =====
+      const expanded = window._dayExpKey === key;
+      let rows = '';
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const isRecipe = e.type === 'recipe';
+        const txt = isRecipe ? (recipeMap.get(e.recipeId)?.title || '（菜谱已删除）') : e.text;
+        const kcal = isRecipe ? recipeKcal(recipeMap.get(e.recipeId)?.ingredients || []) : null;
+        const kcalTxt = (showKcal && isRecipe && kcal && kcal.matched) ? ` <span class="meal-kcal">${kcal.total}kcal</span>` : '';
+        rows += `<div class="meal-row">
+          <span class="meal-dot" style="background:${color}"></span>
+          <span class="meal-name">${isRecipe?'🍳 ':''}${esc(txt)}${kcalTxt}</span>
+          <button class="meal-x" onclick="dayRemove('${date}','${key}',${i})">✕</button>
+        </div>`;
+      }
+      const empty = !entries.length ? `<div class="meal-empty">还没安排</div>` : '';
+      const body = `<div class="meal-list">${rows}${empty}</div>
+        <div class="meal-actions">
+          <button class="meal-add" onclick="dayAddRecipe('${date}','${key}')">+ 选菜谱</button>
+          <button class="meal-add" onclick="dayAddFree('${date}','${key}')">+ 自定义</button>
+        </div>`;
+      slots += `<div class="meal-slot ${expanded?'open':'closed'}" style="border-left:4px solid ${color}">
+        <div class="meal-head" onclick="toggleMealSlot('${key}')">
+          <span class="meal-label" style="color:${color}">${label}</span>
+          ${entries.length ? `<span class="meal-count">${entries.length}项</span>` : ''}
+          <span class="meal-caret">${expanded?'▾':'▸'}</span>
+        </div>
+        ${expanded ? body : ''}
+      </div>`;
+    } else {
+      // ===== 查看态:全展开,只读,菜谱带缩略图,无✕无加菜按钮 =====
+      let rows = '';
+      if (entries.length) {
+        rows = entries.map(e => {
+          const isRecipe = e.type === 'recipe';
+          if (isRecipe) {
+            const r = recipeMap.get(e.recipeId);
+            const title = r?.title || '（菜谱已删除）';
+            const thumb = r?.images?.[0] ? `<img class="dv-thumb" src="${imgURL(r.images[0])}">` : `<div class="dv-thumb dv-thumb-empty">🍳</div>`;
+            return `<div class="dv-row" onclick="location.hash='/recipe/${e.recipeId}'">${thumb}<span class="dv-name">${esc(title)}</span></div>`;
+          }
+          return `<div class="dv-row"><div class="dv-thumb dv-thumb-empty">🍽️</div><span class="dv-name">${esc(e.text)}</span></div>`;
+        }).join('');
+      } else {
+        rows = `<div class="dv-empty">—</div>`;
+      }
+      slots += `<div class="dv-slot" style="border-left:4px solid ${color}">
+        <div class="dv-head"><span class="dv-label" style="color:${color}">${label}</span>${entries.length?`<span class="dv-count">${entries.length}</span>`:''}</div>
+        <div class="dv-list">${rows}</div>
       </div>`;
     }
-    const empty = !entries.length ? `<div class="meal-empty">还没安排</div>` : '';
-    const body = `<div class="meal-list">${rows}${empty}</div>
-      <div class="meal-actions">
-        <button class="meal-add" onclick="dayAddRecipe('${date}','${key}')">+ 选菜谱</button>
-        <button class="meal-add" onclick="dayAddFree('${date}','${key}')">+ 自定义</button>
-      </div>`;
-    slots += `<div class="meal-slot ${expanded?'open':'closed'}" style="border-left:4px solid ${color}">
-      <div class="meal-head" onclick="toggleMealSlot('${key}')">
-        <span class="meal-label" style="color:${color}">${label}</span>
-        ${entries.length ? `<span class="meal-count">${entries.length}项</span>` : ''}
-        <span class="meal-caret">${expanded?'▾':'▸'}</span>
-      </div>
-      ${expanded ? body : ''}
-    </div>`;
   }
-  const totalKcal = await (async () => { const agg = await aggregateIngredients([plan]); return agg; })();
+  // 编辑/完成按钮放顶部 banner 右侧,永远可见,不跟内容长度走
+  const editBtn = editing
+    ? `<button class="day-edit" onclick="dayDoneEdit()">✓</button>`
+    : `<button class="day-edit" onclick="dayStartEdit()">✏️</button>`;
+  // 生成备菜清单:仅查看态显示(编辑态忙着加菜,不需要)
+  const genBtn = editing ? '' : `<div class="day-foot"><button class="btn" onclick="dayGenList('${date}')">🛒 生成备菜清单</button></div>`;
   $app.innerHTML = `
     <div class="day-banner">
       <button class="day-back" onclick="history.back()">‹ 返回</button>
       <div class="day-banner-d">${fmtDate(date)}</div>
+      ${editBtn}
     </div>
     ${slots}
-    <button class="btn" onclick="dayGenList('${date}')">🛒 生成这天的备菜清单</button>
+    ${genBtn}
   `;
 }
+function dayStartEdit() { window._dayEditMode = true; renderDayKeepScroll(location.hash.slice(1).slice('/day/'.length)); }
+function dayDoneEdit() { window._dayEditMode = false; renderDayKeepScroll(location.hash.slice(1).slice('/day/'.length)); }
 function toggleMealSlot(key) {
   // 单选展开：点已展开的→收起；点别的→展开它、收起原来的
   window._dayExpKey = (window._dayExpKey === key) ? null : key;
