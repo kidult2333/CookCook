@@ -50,14 +50,85 @@ async function clearShopping() { return dbClear('shopping'); }
 async function getMeta(key) { return (await dbGet('meta', key))?.value; }
 async function setMeta(key, value) { return dbPut('meta', { key, value }); }
 
-// ---- backup: export / import all data as JSON (no images for portability) ----
-async function exportAll() {
+// ---- backup: export / import all data as JSON (WITH images as base64 data URLs) ----
+// data URL -> Blob (for import). Sync; returns null if not a valid data URL.
+function dataUrlToBlob(dataUrl) {
+  const m = /^data:([^;]+)?(;base64)?,(.*)$/.exec(dataUrl || '');
+  if (!m) return null;
+  const mime = m[1] || 'application/octet-stream';
+  if (m[2]) {
+    const bin = atob(m[3]);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  return new Blob([decodeURIComponent(m[3])], { type: mime });
+}
+
+// Full export: images kept as base64 data URLs so backup can be fully restored.
+async function exportAllFull() {
   const [recipes, plans, pantry, shopping] = await Promise.all([
     dbAll('recipes'), dbAll('mealPlans'), dbAll('pantry'), dbAll('shopping'),
   ]);
-  // strip image blobs from recipes for a lightweight JSON backup
-  const recipesLite = recipes.map(r => ({ ...r, images: r.images ? r.images.length : 0 }));
-  return { exportedAt: new Date().toISOString(), recipes: recipesLite, plans, pantry, shopping };
+  const recipesFull = await Promise.all(recipes.map(async r => ({
+    ...r,
+    images: r.images ? await Promise.all(r.images.map(b => b ? blobToDataUrl(b) : null)) : [],
+  })));
+  const pantryFull = await Promise.all(pantry.map(async p => ({
+    ...p,
+    image: p.image ? await blobToDataUrl(p.image) : null,
+  })));
+  return { exportedAt: new Date().toISOString(), app: 'cookcook', version: 1, recipes: recipesFull, plans, pantry: pantryFull, shopping };
+}
+
+// Import: merge by key (dbPut = upsert). Same id/date overwrites; different id/date coexists (no dup). Images restored from data URLs.
+async function importAll(data) {
+  const counts = { recipes: 0, plans: 0, pantry: 0, shopping: 0 };
+  if (Array.isArray(data.recipes)) {
+    for (const r of data.recipes) {
+      const rec = { ...r };
+      if (rec.images) rec.images = rec.images.map(u => (typeof u === 'string' && u.indexOf('data:') === 0) ? dataUrlToBlob(u) : null);
+      await dbPut('recipes', rec); counts.recipes++;
+    }
+  }
+  if (Array.isArray(data.plans)) { for (const p of data.plans) { await dbPut('mealPlans', p); counts.plans++; } }
+  if (Array.isArray(data.pantry)) {
+    for (const p of data.pantry) {
+      const it = { ...p };
+      if (it.image) it.image = dataUrlToBlob(it.image);
+      await dbPut('pantry', it); counts.pantry++;
+    }
+  }
+  if (Array.isArray(data.shopping)) { for (const s of data.shopping) { await dbPut('shopping', s); counts.shopping++; } }
+  return counts;
+}
+
+// ---- meal cart (待分配篮子): localStorage 持久化,刷新不丢,可攒一篮子回头排 ----
+// 每条: { rid(菜谱id), title(冗余便于篮内显示,菜谱删了也不致空), date(预填日期,可空), meal(预填餐次key,可空), at }
+const CART_KEY = 'cookcook-mealcart';
+function getCart() {
+  try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveCart(arr) { localStorage.setItem(CART_KEY, JSON.stringify(arr || [])); }
+function cartAdd(rid, title, date, meal) {
+  const cart = getCart();
+  cart.push({ rid, title: title || '', date: date || null, meal: meal || null, at: Date.now() });
+  saveCart(cart);
+  return cart;
+}
+function cartRemove(idx) { const c = getCart(); c.splice(idx, 1); saveCart(c); return c; }
+function cartSetDM(idx, date, meal) { const c = getCart(); if (c[idx]) { c[idx].date = date || null; c[idx].meal = meal || null; } saveCart(c); return c; }
+function cartClear() { saveCart([]); return []; }
+// 把篮内某条写入 plan 的对应餐次,返回该条(调用方据 idx 删篮)
+async function cartCommit(idx) {
+  const c = getCart();
+  const item = c[idx]; if (!item) return null;
+  if (!item.date || !item.meal) return null;
+  const plan = await getPlanCompat(item.date);
+  plan[item.meal] = plan[item.meal] || [];
+  plan[item.meal].push({ type: 'recipe', recipeId: item.rid });
+  await savePlan(plan);
+  return item;
 }
 
 // Convert a File/Blob to a data URL for storing images (works in IndexedDB as Blob too; we keep Blob)

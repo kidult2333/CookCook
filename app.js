@@ -28,6 +28,17 @@ function toast(msg) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 1800);
 }
+// 卡路里显隐开关：默认隐藏（不准+超标），眼睛图标切换，存 meta 跨重开持久
+let showKcal = false;
+(async () => { try { showKcal = !!(await getMeta('showKcal')); } catch (e) {} })();
+async function toggleKcal() {
+  showKcal = !showKcal;
+  try { await setMeta('showKcal', showKcal); } catch (e) {}
+  const ico = document.getElementById('kcal-eye');
+  if (ico) ico.textContent = showKcal ? '👁' : '👁‍🗨';
+  // 重画当前页让卡路里显隐生效
+  route();
+}
 // 给标签按名字生成稳定的柔和配色（HSL），同标签永远同色
 const TAG_PALETTE = [
   ['#fde4e0','#c0392b'], ['#ffe9d6','#d35400'], ['#fff3cf','#b8860b'],
@@ -60,9 +71,12 @@ function route() {
   const hash = location.hash.slice(1) || '/calendar';
   const [path, ...rest] = hash.split('/');
   closeMoreMenu();
+  // 离开选菜模式:清加购态 + 移除底部篮条(篮子数据保留,只是不显示)
+  if (!hash.startsWith('/pick')) { pickLeave(); cartBarRemove(); }
   if (hash.startsWith('/calendar')) { setTitle('日历'); renderCalendar(); }
   else if (hash.startsWith('/day/')) { setTitle('餐单'); renderDay(hash.slice('/day/'.length)); }
   else if (hash.startsWith('/recipes')) { setTitle('菜谱'); renderRecipes(); }
+  else if (hash.startsWith('/pick')) { setTitle('选菜加购'); renderPick(); }
   else if (hash.startsWith('/recipe/new')) { setTitle('新建菜谱'); renderRecipeEdit(null); }
   else if (hash.startsWith('/recipe/')) { setTitle('菜谱详情'); renderRecipeDetail(hash.slice('/recipe/'.length)); }
   else if (hash.startsWith('/import')) { location.hash = '/recipe/new'; return; } // 已合并进新建菜谱页
@@ -91,8 +105,7 @@ $more.addEventListener('click', (e) => {
   e.stopPropagation();
   if (document.getElementById('more-menu')) { closeMoreMenu(); return; }
   const m = el(`<div id="more-menu" class="card" style="position:fixed;top:52px;right:8px;z-index:30;width:180px;padding:6px">
-    <a href="#/more" style="display:block;padding:10px;border-radius:8px;color:var(--text);text-decoration:none">数据备份 / 关于</a>
-    <a href="#/recipe/new" style="display:block;padding:10px;border-radius:8px;color:var(--text);text-decoration:none">新建菜谱（含粘贴识别）</a>
+    <a href="#/more" style="display:block;padding:10px;border-radius:8px;color:var(--text);text-decoration:none">数据备份 / 恢复</a>
   </div>`);
   document.body.appendChild(m);
 });
@@ -154,7 +167,7 @@ async function renderCalendar() {
         meals += `<div class="wk-meal" style="--mc:${color}"><span class="wk-bar"></span><span class="wk-l">${label}</span><span class="wk-chips">${chips}</span></div>`;
       }
     }
-    const cls = ['wk-row', isToday ? 'today' : '', p ? 'has-plan' : ''].filter(Boolean).join(' ');
+    const cls = ['wk-row', isToday ? 'today' : '', p ? 'has-plan' : '', (dow===0||dow===6) ? 'wknd' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" onclick="location.hash='/day/${ds}'">
       <div class="wk-date"><span class="wk-dow ${dow===0||dow===6?'wknd':''}">${dowCN}</span><span class="wk-num">${d.getDate()}</span>${isToday?'<span class="wk-today">今</span>':''}</div>
       <div class="wk-meals">${meals || '<span class="wk-empty">还没安排，点这里加餐</span>'}</div>
@@ -219,7 +232,7 @@ async function renderDay(date) {
       const isRecipe = e.type === 'recipe';
       const txt = isRecipe ? (recipeMap.get(e.recipeId)?.title || '（菜谱已删除）') : e.text;
       const kcal = isRecipe ? recipeKcal(recipeMap.get(e.recipeId)?.ingredients || []) : null;
-      const kcalTxt = (isRecipe && kcal && kcal.matched) ? ` <span class="meal-kcal">${kcal.total}kcal</span>` : '';
+      const kcalTxt = (showKcal && isRecipe && kcal && kcal.matched) ? ` <span class="meal-kcal">${kcal.total}kcal</span>` : '';
       rows += `<div class="meal-row">
         <span class="meal-dot" style="background:${color}"></span>
         <span class="meal-name">${isRecipe?'🍳 ':''}${esc(txt)}${kcalTxt}</span>
@@ -264,22 +277,11 @@ function renderDayKeepScroll(date) {
 }
 
 async function dayAddRecipe(date, key) {
-  const plan = await getPlanCompat(date);
   const recipes = await listRecipes();
   if (!recipes.length) { alert('还没有菜谱，先去"菜谱"tab新建一个吧'); return; }
-  const opts = recipes.map(r => `<option value="${r.id}">${esc(r.title)}</option>`).join('');
-  const m = el(`<div class="modal-bg" onclick="if(event.target===this)this.remove()">
-    <div class="modal"><h2>选一个菜谱<button class="modal-close" onclick="this.closest('.modal-bg').remove()">✕</button></h2>
-    <select id="pick-sel">${opts}</select>
-    <button class="btn" style="margin-top:12px" id="pick-ok">加入${({breakfast:'早餐',morning_snack:'早加餐',lunch:'午餐',afternoon_snack:'午加餐',dinner:'晚餐',evening_snack:'晚加餐'}[key])}</button>
-    </div></div>`);
-  document.body.appendChild(m);
-  m.querySelector('#pick-ok').onclick = async () => {
-    plan[key].push({ type: 'recipe', recipeId: m.querySelector('#pick-sel').value });
-    await savePlan(plan); m.remove();
-    window._dayExpKey = key; // 加完后展开该餐次
-    renderDayKeepScroll(date);
-  };
+  // 记住从哪顿进来,作为篮内新加菜谱的默认日期+餐次预填
+  window._pickDefault = { date, meal: key };
+  location.hash = '/pick';
 }
 async function dayAddFree(date, key) {
   const plan = await getPlanCompat(date);
@@ -435,9 +437,154 @@ async function renderRecipes() {
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
     </div>
-    <button class="fab" onclick="location.hash='/recipe/new'">＋</button>`;
+    <div class="fab-bar">
+      <button class="fab-pill pick-enter" onclick="enterPickFromRecipes()">🛒 选购</button>
+      <button class="fab-pill add" onclick="location.hash='/recipe/new'">＋ 新建</button>
+    </div>`;
   refreshRecipeList();
   drawTagPicker();
+}
+
+// ---------- 选菜加购模式 (/pick) ----------
+// 从菜谱主界面进选购:不预填日期餐次,纯多选,分配时再选
+function enterPickFromRecipes() {
+  window._pickDefault = null;
+  location.hash = '/pick';
+}
+// 进入时记下来源 date+meal(预填用),设 _pickMode 让菜谱卡显示加购按钮
+async function pickAdd(rid) {
+  const r = await getRecipe(rid);
+  const title = r ? (r.title || '') : '（菜谱已删除）';
+  const d = window._pickDefault || {};
+  cartAdd(rid, title, d.date, d.meal);
+  toast(`已加入待分配篮`);
+  drawCartBar();
+}
+async function renderPick() {
+  window._pickMode = true;
+  const recipes = await listRecipes();
+  if (!recipes.length) {
+    window._pickMode = false;
+    $app.innerHTML = `<div class="card"><div class="empty"><div class="big">🍳</div>还没有菜谱<br>先去新建一道</div></div><button class="btn ghost" onclick="history.back()">返回</button>`;
+    return;
+  }
+  const d = window._pickDefault || {};
+  const hint = (d.date && d.meal) ? `正在为 ${fmtDate(d.date)} 的 ${({breakfast:'早餐',morning_snack:'早加餐',lunch:'午餐',afternoon_snack:'午加餐',dinner:'晚餐',evening_snack:'晚加餐'}[d.meal])} 选菜` : '选菜加购,稍后统一分配到餐';
+  const allTags = [...new Set(recipes.flatMap(r => r.tags || []))];
+  if (!window._recipeTags) window._recipeTags = [];
+  const selTags = window._recipeTags;
+  const tagBtnLabel = selTags.length ? `标签 ${selTags.length} 选 ▾` : '标签 ▾';
+  const tagBtnOn = selTags.length > 0;
+  const modeBtn = (m, label, icon) => {
+    const on = recipeFilterMode === m;
+    return `<button class="add-mini" style="background:${on?'var(--accent)':'var(--card)'};color:${on?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('${m}')">${icon} ${label}</button>`;
+  };
+  $app.innerHTML = `
+    <div class="pick-hint"><span>${esc(hint)} · 点菜谱卡或＋加购,可多选,底部统一分配</span><button class="pick-exit" onclick="location.hash='/recipes'">退出选购</button></div>
+    <div class="card">
+      <div class="search-bar"><input id="rec-search" placeholder="🔍 搜菜谱名或食材" value="${esc(recipeSearch)}" oninput="setRecipeSearch(this.value)"></div>
+      <div class="rec-filter-row">
+        <button class="add-mini" style="background:${recipeFilterMode==='all'?'var(--accent)':'var(--card)'};color:${recipeFilterMode==='all'?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('all')">全部</button>
+        ${modeBtn('fav','收藏','★')}
+        ${modeBtn('cooked','做过','✓')}
+        ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
+      </div>
+      <div id="tag-picker" class="tag-picker" style="display:none"></div>
+      <div id="rec-list"></div>
+    </div>`;
+  refreshRecipeList();
+  drawTagPicker();
+  drawCartBar();
+}
+// 离开选菜模式(route 切到别的页时)清 _pickMode
+function pickLeave() { window._pickMode = false; }
+// 底部 sticky 篮条
+function drawCartBar() {
+  const old = document.getElementById('cart-bar');
+  if (old) old.remove();
+  const cart = getCart();
+  if (!cart.length) return;
+  const bar = el(`<div id="cart-bar" class="cart-bar" onclick="openCartSheet()">
+    <span class="cb-icon">🛒</span>
+    <span class="cb-text">待分配 <b>${cart.length}</b> 道</span>
+    <span class="cb-btn">分配到餐</span>
+  </div>`);
+  document.body.appendChild(bar);
+}
+function cartBarRemove() { const b = document.getElementById('cart-bar'); if (b) b.remove(); }
+
+// 分配 sheet:每道菜用 chip 选日期(带星期+今天/周末)+餐次(带配色),所见即所得
+const MEAL_OPTS = [
+  ['breakfast','早餐','#f4b860'], ['morning_snack','早加餐','#e89b6f'], ['lunch','午餐','#6fa8d6'],
+  ['afternoon_snack','午加餐','#8dbf6f'], ['dinner','晚餐','#a07cd6'], ['evening_snack','晚加餐','#d68f9b'],
+];
+const DOW_CN = ['日','一','二','三','四','五','六'];
+function openCartSheet() {
+  const cart = getCart();
+  if (!cart.length) return;
+  const today = ymd(new Date());
+  const days = [0,1,2,3,4,5,6].map(o => { const d = new Date(); d.setDate(d.getDate()+o); const s = ymd(d); return { s, label: fmtDate(s), dow: d.getDay(), isToday: s===today }; });
+  const dflt = window._pickDefault || {};
+  const rows = cart.map((it, idx) => {
+    const date = it.date || dflt.date || today;
+    const meal = it.meal || dflt.meal || 'dinner';
+    const dateChips = days.map(dd => {
+      const wknd = (dd.dow === 0 || dd.dow === 6);
+      const on = dd.s === date;
+      const tag = dd.isToday ? '今天' : `周${DOW_CN[dd.dow]}`;
+      return `<button class="cs-chip cs-d ${on?'on':''} ${wknd?'wknd':''}" data-k="${dd.s}">${dd.label}<em>${tag}</em></button>`;
+    }).join('');
+    const mealChips = MEAL_OPTS.map(([k,l,c]) => {
+      const on = k === meal;
+      return `<button class="cs-chip cs-m ${on?'on':''}" style="--mc:${c}" data-k="${k}">${l}</button>`;
+    }).join('');
+    return `<div class="cs-row">
+      <div class="cs-head"><span class="cs-name">${esc(it.title || '（菜谱已删除）')}</span><button class="cs-del" onclick="cartRemove(${idx});openCartSheet();drawCartBar()">✕</button></div>
+      <div class="cs-chips cs-dates" data-idx="${idx}">${dateChips}</div>
+      <div class="cs-chips cs-meals" data-idx="${idx}">${mealChips}</div>
+    </div>`;
+  }).join('');
+  const m = el(`<div class="modal-bg" onclick="if(event.target===this)this.remove()">
+    <div class="modal cart-sheet">
+      <div class="cs-top"><h2>分配到餐 <button class="modal-close" onclick="this.closest('.modal-bg').remove()">✕</button></h2>
+      <p class="cs-sub">每道菜选哪天 + 哪顿,选好点底部一键加入餐单</p></div>
+      <div class="cs-list">${rows}</div>
+      <div class="cs-foot">
+        <button class="btn ghost" onclick="cartClear();this.closest('.modal-bg').remove();cartBarRemove();toast('已清空篮子')">清空</button>
+        <button class="btn" id="cs-commit">全部加入餐单</button>
+      </div>
+    </div></div>`);
+  document.body.appendChild(m);
+  // chip 点选后局部高亮更新(不整页重画,避免滚动跳)
+  m.querySelectorAll('.cs-chips').forEach(grp => {
+    grp.addEventListener('click', (e) => {
+      const chip = e.target.closest('.cs-chip'); if (!chip) return;
+      grp.querySelectorAll('.cs-chip').forEach(c => c.classList.remove('on'));
+      chip.classList.add('on');
+    });
+  });
+  m.querySelector('#cs-commit').onclick = async () => {
+    // 读 sheet 里每行 chip 的实际选中态(而非依赖 cartSetDM,因为点选只改了 DOM 高亮)
+    const cartNow = getCart();
+    for (let idx = 0; idx < cartNow.length; idx++) {
+      const row = m.querySelectorAll('.cs-row')[idx];
+      if (!row) continue;
+      const dOn = row.querySelector('.cs-dates .cs-chip.on');
+      const mOn = row.querySelector('.cs-meals .cs-chip.on');
+      if (dOn && mOn) cartSetDM(idx, dOn.dataset.k || dOn.textContent, mOn.dataset.k);
+    }
+    const btn = m.querySelector('#cs-commit'); btn.disabled = true; btn.textContent = '分配中…';
+    let n = 0;
+    for (let idx = getCart().length - 1; idx >= 0; idx--) {
+      const item = getCart()[idx];
+      if (item && item.date && item.meal) { await cartCommit(idx); cartRemove(idx); n++; }
+    }
+    m.remove();
+    cartBarRemove();
+    toast(`已把 ${n} 鬥菜加入餐单`);
+    const d = window._pickDefault || {};
+    location.hash = d.date ? `/day/${d.date}` : '/calendar';
+  };
 }
 
 // 标签多选浮层：展开/收起 + 渲染 checkbox 列表
@@ -547,15 +694,18 @@ async function refreshRecipeList() {
     const thumb = r.images && r.images[0] ? `<img class="recipe-thumb" src="${imgURL(r.images[0])}">` : `<div class="recipe-thumb"></div>`;
     const ings = (r.ingredients || []).map(i => i.name).join('、');
     const kcal = recipeKcal(r.ingredients || []);
-    const kcalTag = kcal.matched ? `<span class="tag" style="background:#fbe7d2;color:#a85a1a">${kcal.total}kcal</span>` : '';
+    const kcalTag = (showKcal && kcal.matched) ? `<span class="tag" style="background:#fbe7d2;color:#a85a1a">${kcal.total}kcal</span>` : '';
     const tagTags = (r.tags || []).map(tagChipRO).join('');
     const pinIcon = r.pinned ? `<span class="pin-mark" title="置顶">📌</span>` : '';
     const favBtn = `<span class="rec-fav ${r.fav?'on':''}" onclick="toggleFav('${r.id}',event)">${r.fav?'★':'☆'}</span>`;
     const cookedMark = r.cooked ? `<span class="cooked-mark">✓ 做过</span>` : '';
     const ratingStars = r.cooked && r.rating ? starsRO(r.rating) : '';
-    return `<div class="recipe-item ${r.pinned?'pinned':''} ${r.cooked?'cooked':''}" onclick="location.hash='/recipe/${r.id}'">
+    const pickMode = window._pickMode;
+    const addBtn = pickMode ? `<button class="add-cart" onclick="event.stopPropagation();pickAdd('${r.id}')">＋ 加购</button>` : '';
+    const cardClick = pickMode ? `pickAdd('${r.id}')` : `location.hash='/recipe/${r.id}'`;
+    return `<div class="recipe-item ${r.pinned?'pinned':''} ${r.cooked?'cooked':''} ${pickMode?'pick':''}" onclick="${cardClick}">
       ${thumb}<div class="meta"><div class="t">${pinIcon}${esc(r.title)} ${favBtn}</div>
-      <div class="s">${cookedMark}${ratingStars}${tagTags}${kcalTag}<br>${esc(ings.slice(0, 40))}</div></div></div>`;
+      <div class="s">${cookedMark}${ratingStars}${tagTags}${kcalTag}<br>${esc(ings.slice(0, 40))}</div>${addBtn}</div></div>`;
   }).join('');
 }
 
@@ -563,21 +713,22 @@ async function renderRecipeDetail(id) {
   const r = await getRecipe(id);
   if (!r) { $app.innerHTML = `<div class="empty">菜谱不存在</div><button class="btn ghost" onclick="history.back()">返回</button>`; return; }
   let imgs = (r.images || []).map(b => `<img src="${imgURL(b)}" style="width:100%;border-radius:12px;margin-bottom:8px">`).join('');
-  // 食材 + 每项卡路里
+  // 食材 + 每项卡路里（受全局 showKcal 开关控制）
   const kcal = recipeKcal(r.ingredients || []);
   let ings = (r.ingredients || []).map(i => {
     const k = estimateIngredientKcal(i);
-    const kcalTxt = k.matched && k.kcal != null ? `<span class="qty">${k.kcal} kcal${k.approx ? '~' : ''}</span>` : `<span class="qty" style="color:var(--muted)">—</span>`;
+    const kcalTxt = (showKcal && k.matched && k.kcal != null) ? `<span class="qty">${k.kcal} kcal${k.approx ? '~' : ''}</span>` : (showKcal ? `<span class="qty" style="color:var(--muted)">—</span>` : '');
     return `<div class="meal-entry"><span>${esc(i.name)} <span class="qty">${esc(i.amount||'')}${esc(i.unit||'')}</span></span>${kcalTxt}</div>`;
   }).join('');
   const linkBlock = r.link ? `<div class="link-box"><div class="link-label">小红书链接 · 点复制去 app 里看</div><div class="link-row"><input class="link-text" value="${esc(r.link)}" readonly onclick="this.select()"><button class="link-copy" onclick="copyLink('${esc(r.link)}')">复制</button></div></div>` : '';
   const tagRow = (r.tags && r.tags.length) ? `<div style="margin:8px 0">${r.tags.map(tagChipRO).join('')}</div>` : '';
   const unmatchedHint = kcal.unmatched.length ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">未估算：${kcal.unmatched.map(esc).join('、')}</div>` : '';
-  const kcalBlock = kcal.matched ? `<div class="section-title">估算热量</div><div class="card"><b style="font-size:20px;color:var(--accent)">${kcal.total}</b> kcal（整份，约 ${(kcal.total/230).toFixed(1)} 碗米饭）${unmatchedHint}</div>` : '';
-  // 标题栏：标题 + 收藏/置顶按钮
+  const kcalBlock = (showKcal && kcal.matched) ? `<div class="section-title">估算热量</div><div class="card"><b style="font-size:20px;color:var(--accent)">${kcal.total}</b> kcal（整份，约 ${(kcal.total/230).toFixed(1)} 碗米饭）${unmatchedHint}</div>` : '';
+  // 标题栏：标题 + 卡路里眼睛 + 收藏/置顶按钮
   const titleBar = `<div class="rd-title-bar">
     <div class="rd-title">${esc(r.title)}</div>
     <div class="rd-actions">
+      <button class="rd-act" id="kcal-eye" onclick="toggleKcal()" title="${showKcal?'隐藏卡路里':'显示卡路里'}">${showKcal?'👁':'👁‍🗨'}</button>
       <button class="rd-act ${r.fav?'on':''}" onclick="toggleFavDetail('${id}')" title="收藏">${r.fav?'★':'☆'}</button>
       <button class="rd-act ${r.pinned?'on':''}" onclick="togglePinnedDetail('${id}')" title="置顶">📌</button>
     </div>
@@ -596,11 +747,39 @@ async function renderRecipeDetail(id) {
     <div class="section-title">食材</div><div class="card">${ings || '<div class="empty">无</div>'}</div>
     ${kcalBlock}
     <div class="row" style="margin-top:12px">
+      <button class="btn" onclick="planRecipeDirect('${id}')">📅 安排到某天某顿</button>
+    </div>
+    <div class="row" style="margin-top:8px">
       <button class="btn secondary" onclick="editRecipe('${id}')">编辑</button>
       <button class="btn danger" onclick="delRecipe('${id}')">删除</button>
     </div>
     <button class="btn ghost" onclick="history.back()" style="margin-top:8px">返回</button>
   `;
+}
+// 详情页"直接安排到某天某顿"快车道:不走篮子,弹sheet选完直接写入plan
+function planRecipeDirect(id) {
+  const today = ymd(new Date());
+  const days = [0,1,2,3,4,5,6].map(o => { const d = new Date(); d.setDate(d.getDate()+o); return ymd(d); });
+  const m = el(`<div class="modal-bg" onclick="if(event.target===this)this.remove()">
+    <div class="modal">
+      <h2>安排到餐单<button class="modal-close" onclick="this.closest('.modal-bg').remove()">✕</button></h2>
+      <label>哪天</label>
+      <select id="pd-date">${days.map(d => `<option value="${d}">${fmtDate(d)}${d===today?' (今天)':''}</option>`).join('')}</select>
+      <label style="margin-top:8px">哪顿</label>
+      <select id="pd-meal">${MEAL_OPTS.map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+      <button class="btn" style="margin-top:12px" id="pd-ok">加入餐单</button>
+    </div></div>`);
+  document.body.appendChild(m);
+  m.querySelector('#pd-ok').onclick = async () => {
+    const date = m.querySelector('#pd-date').value, meal = m.querySelector('#pd-meal').value;
+    const plan = await getPlanCompat(date);
+    plan[meal] = plan[meal] || [];
+    plan[meal].push({ type: 'recipe', recipeId: id });
+    await savePlan(plan);
+    m.remove();
+    toast(`已加入 ${fmtDate(date)} 的 ${({breakfast:'早餐',morning_snack:'早加餐',lunch:'午餐',afternoon_snack:'午加餐',dinner:'晚餐',evening_snack:'晚加餐'}[meal])}`);
+    location.hash = `/day/${date}`;
+  };
 }
 async function editRecipe(id) { renderRecipeEdit(id); }
 async function delRecipe(id) {
@@ -630,7 +809,7 @@ function drawRecipeEditor() {
   let stepRows = s.steps.map((st, idx) => `
     <div class="ing-edit-row"><input class="n" placeholder="第${idx + 1}步" value="${esc(st.text || st)}" oninput="editState.steps[${idx}].text=this.value">
     <button class="x" onclick="editState.steps.splice(${idx},1);drawRecipeEditor()">✕</button></div>`).join('');
-  let imgs = s.images.map((b, idx) => `<img src="${imgURL(b)}"><button class="x" onclick="editState.images.splice(${idx},1);drawRecipeEditor()" style="position:relative">✕</button>`).join('');
+  let imgs = s.images.map((b, idx) => `<div class="img-tile"><img src="${imgURL(b)}"><button class="img-del" onclick="editState.images.splice(${idx},1);drawRecipeEditor()">✕</button></div>`).join('');
   const tagChips = (s.tags || []).map((t, idx) => {
     const [bg, fg] = tagColor(t);
     return `<span class="tag" style="background:${bg};color:${fg}">${esc(t)}<button class="x" style="font-size:13px;margin-left:4px;color:${fg}" onclick="editState.tags.splice(${idx},1);drawRecipeEditor()">✕</button></span>`;
@@ -730,7 +909,7 @@ function drawImport() {
   const stepRows = (s.steps || []).map((st, idx) => `
     <div class="ing-edit-row"><input class="n" placeholder="第${idx + 1}步" value="${esc(st.text || st)}" oninput="importState.steps[${idx}].text=this.value">
     <button class="x" onclick="importState.steps.splice(${idx},1);drawImport()">✕</button></div>`).join('');
-  const imgs = s.images.map((b, idx) => `<img src="${imgURL(b)}"><button class="x" onclick="importState.images.splice(${idx},1);drawImport()">✕</button>`).join('');
+  const imgs = s.images.map((b, idx) => `<div class="img-tile"><img src="${imgURL(b)}"><button class="img-del" onclick="importState.images.splice(${idx},1);drawImport()">✕</button></div>`).join('');
   const tagChips = (s.tags || []).map((t, idx) => {
     const [bg, fg] = tagColor(t);
     return `<span class="tag" style="background:${bg};color:${fg}">${esc(t)}<button class="x" style="font-size:13px;margin-left:4px;color:${fg}" onclick="importState.tags.splice(${idx},1);drawImport()">✕</button></span>`;
@@ -870,47 +1049,66 @@ async function renderPantry() {
   let filtered = items;
   if (pantryStateFilter) filtered = filtered.filter(i => expiryState(i.expiryDate) === pantryStateFilter);
   if (pantryTagFilter) filtered = filtered.filter(i => (i.tags || []).includes(pantryTagFilter));
-  // group by expiry state, most urgent first
-  const groups = { red: [], yellow: [], green: [], none: [] };
-  filtered.forEach(i => groups[expiryState(i.expiryDate)].push(i));
-  const GROUPS = [
-    { key:'red', label:'已过期 / 今天到期' },
-    { key:'yellow', label:'即将过期' },
-    { key:'green', label:'新鲜' },
-    { key:'none', label:'无保质期' },
-  ];
+  // 单个食材卡片渲染
+  function pantryCard(i) {
+    const st = expiryState(i.expiryDate);
+    const tags = (i.tags || []).map(tagChipRO).join('');
+    let expLine;
+    if (i.expiryDate) {
+      const days = Math.ceil((new Date(i.expiryDate).getTime() - Date.now()) / 86400000);
+      let dlabel;
+      if (days < 0) dlabel = `已过期${-days}天`;
+      else if (days === 0) dlabel = '今天到期';
+      else dlabel = `剩${days}天`;
+      expLine = `保质 ${fmtDate(i.expiryDate)} · <span class="dl ${st}">${dlabel}</span>`;
+    } else {
+      expLine = '<span class="dl none">无保质期</span>';
+    }
+    const pd = i.purchaseDate ? `购 ${fmtDate(i.purchaseDate)}` : '';
+    return `<div class="pantry-card ${st}" onclick="editPantry('${i.id}')">
+      <div class="pc-bar"></div>
+      <div class="pc-body">
+        <div class="pc-top"><span class="pc-name">${esc(i.name)}</span><span class="pc-qty">${esc(i.quantity || '')}${esc(i.unit || '')}</span></div>
+        ${tags ? `<div class="pc-tags">${tags}</div>` : ''}
+        <div class="pc-meta">${pd ? `<span>${pd}</span><span class="sep">·</span>` : ''}<span>${expLine}</span></div>
+      </div>
+    </div>`;
+  }
+  // 按标签分组（无标签归"未分类"），每组可折叠。组内按保质期紧迫度排序。
+  if (!window._pantryOpen) window._pantryOpen = new Set();
   let list = '';
   if (!filtered.length) {
     list = `<div class="empty"><div class="big">🥫</div>${items.length ? '该分类下没有食材' : '食材库是空的'}<br>点下面添加</div>`;
   } else {
-    list = GROUPS.map(g => {
-      if (!groups[g.key].length) return '';
-      groups[g.key].sort((a, b) => (a.expiryDate || '9999').localeCompare(b.expiryDate || '9999'));
-      const rows = groups[g.key].map(i => {
-        const st = expiryState(i.expiryDate);
-        const tags = (i.tags || []).map(tagChipRO).join('');
-        let expLine;
-        if (i.expiryDate) {
-          const days = Math.ceil((new Date(i.expiryDate).getTime() - Date.now()) / 86400000);
-          let dlabel;
-          if (days < 0) dlabel = `已过期${-days}天`;
-          else if (days === 0) dlabel = '今天到期';
-          else dlabel = `剩${days}天`;
-          expLine = `保质 ${fmtDate(i.expiryDate)} · <span class="dl ${st}">${dlabel}</span>`;
-        } else {
-          expLine = '<span class="dl none">无保质期</span>';
-        }
-        const pd = i.purchaseDate ? `购 ${fmtDate(i.purchaseDate)}` : '';
-        return `<div class="pantry-card ${st}" onclick="editPantry('${i.id}')">
-          <div class="pc-bar"></div>
-          <div class="pc-body">
-            <div class="pc-top"><span class="pc-name">${esc(i.name)}</span><span class="pc-qty">${esc(i.quantity || '')}${esc(i.unit || '')}</span></div>
-            ${tags ? `<div class="pc-tags">${tags}</div>` : ''}
-            <div class="pc-meta">${pd ? `<span>${pd}</span><span class="sep">·</span>` : ''}<span>${expLine}</span></div>
-          </div>
-        </div>`;
-      }).join('');
-      return `<div class="pantry-group"><div class="pantry-group-h"><span class="pg-dot ${g.key}"></span>${g.label}<span class="pg-count">${groups[g.key].length}</span></div>${rows}</div>`;
+    // 收集所有标签（保持 pantryTagFilter 选中优先置顶），无标签的食材单独一组
+    const tagGroups = new Map(); // tag -> [items]
+    const noTag = [];
+    for (const it of filtered) {
+      const ts = it.tags || [];
+      if (ts.length) ts.forEach(t => { if (!tagGroups.has(t)) tagGroups.set(t, []); tagGroups.get(t).push(it); });
+      else noTag.push(it);
+    }
+    // 组排序：当前筛选标签最前，其余按标签字母/笔划原序
+    const tagOrder = [...tagGroups.keys()].sort((a, b) => {
+      if (a === pantryTagFilter) return -1; if (b === pantryTagFilter) return 1;
+      return 0;
+    });
+    const sections = [];
+    for (const t of tagOrder) sections.push({ key: t, label: t, items: tagGroups.get(t), colored: true });
+    if (noTag.length) sections.push({ key: '__none', label: '未分类', items: noTag, colored: false });
+    list = sections.map(sec => {
+      sec.items.sort((a, b) => (a.expiryDate || '9999').localeCompare(b.expiryDate || '9999'));
+      const open = window._pantryOpen.has(sec.key);
+      // 组内快过期数：用于角标提示
+      const urgent = sec.items.filter(i => { const s = expiryState(i.expiryDate); return s === 'red' || s === 'yellow'; }).length;
+      const [bg, fg] = sec.colored ? tagColor(sec.label) : ['#f0f0f0', '#888'];
+      const head = `<div class="pantry-group-h ${open?'open':''}" onclick="togglePantryGroup('${esc(sec.key)}')">
+        <span class="pg-caret">${open?'▾':'▸'}</span>
+        <span class="pg-chip" style="background:${bg};color:${fg}">${esc(sec.label)}</span>
+        <span class="pg-count">${sec.items.length}${urgent ? ` · <em style="color:var(--red);font-style:normal">${urgent}急</em>` : ''}</span>
+      </div>`;
+      const rows = open ? sec.items.map(pantryCard).join('') : '';
+      return `<div class="pantry-group">${head}${rows}</div>`;
     }).join('');
   }
   $app.innerHTML = `${banner}
@@ -918,6 +1116,11 @@ async function renderPantry() {
     ${filterBar}
     <div>${list}</div>
     <button class="fab" onclick="editPantry()">＋</button>`;
+}
+function togglePantryGroup(key) {
+  const s = window._pantryOpen;
+  if (s.has(key)) s.delete(key); else s.add(key);
+  renderPantry();
 }
 async function editPantry(id) {
   let item = id ? await dbGet('pantry', id) : { name: '', quantity: '', unit: '', expiryDate: '', purchaseDate: '', tags: [], image: null };
@@ -1053,22 +1256,47 @@ async function shopAddManual() {
 async function renderMore() {
   $app.innerHTML = `
     <div class="card">
-      <div class="section-title">数据备份</div>
-      <p style="font-size:13px;color:var(--muted)">数据只存在这台手机本地。换手机前请导出备份（不含图片，仅文字）。</p>
-      <button class="btn secondary" onclick="moreExport()">导出备份(JSON)</button>
+      <div class="section-title">数据备份 / 恢复</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7">数据只存在这台手机本地，不会自动上云。<br><b>导出</b>：把全部数据（含图片）存成一个 JSON 文件，建议存到 iCloud 云盘，换机或丢手机时能恢复。<br><b>导入</b>：选一个备份 JSON 恢复。按 id 合并——同 id 会被覆盖，不会删除你现有的其他记录，也不会重复。</p>
+      <button class="btn secondary" onclick="moreExport()">导出备份（含图片）</button>
+      <button class="btn ghost" onclick="moreImportPick()" style="margin-top:8px">导入备份</button>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="moreImport(this)">
     </div>
     <div class="card">
       <div class="section-title">关于</div>
-      <p style="font-size:13px;color:var(--muted)">CookCook — 离线可用的菜谱与餐单 PWA。<br>新建菜谱支持粘贴小红书文本自动识别（截图+实况文本复制+粘贴），非自动抓取。</p>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7">CookCook — 离线可用的菜谱与餐单 PWA。<br>新建菜谱支持粘贴小红书文本自动识别（截图+实况文本复制+粘贴），非自动抓取。</p>
     </div>`;
 }
 async function moreExport() {
-  const data = await exportAll();
+  const data = await exportAllFull();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `cookcook-backup-${ymd(new Date())}.json`;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function moreImportPick() { document.getElementById('import-file').click(); }
+async function moreImport(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  if (!confirm('确认导入这个备份？同 id 的记录会被覆盖，不会删除你现有的其他记录。')) { input.value = ''; return; }
+  try {
+    const text = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result);
+      fr.onerror = () => rej(fr.error);
+      fr.readAsText(f);
+    });
+    const data = JSON.parse(text);
+    const counts = await importAll(data);
+    alert(`导入完成\n菜谱 ${counts.recipes} 条\n餐单 ${counts.plans} 天\n食材 ${counts.pantry} 项\n购物 ${counts.shopping} 项`);
+    route();
+  } catch (err) {
+    alert('导入失败：不是有效的 CookCook 备份文件' + (err && err.message ? '\n' + err.message : ''));
+  } finally {
+    input.value = '';
+  }
 }
 
 // ---------- service worker ----------
