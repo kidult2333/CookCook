@@ -1,5 +1,5 @@
 // sw.js — cache the app shell so it works offline on iPhone (CookCook)
-const CACHE = 'cookcook-v14';
+const CACHE = 'cookcook-v15';
 const SHELL = [
   './',
   './index.html',

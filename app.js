@@ -167,7 +167,7 @@ async function renderCalendar() {
         meals += `<div class="wk-meal" style="--mc:${color}"><span class="wk-bar"></span><span class="wk-l">${label}</span><span class="wk-chips">${chips}</span></div>`;
       }
     }
-    const cls = ['wk-row', isToday ? 'today' : '', p ? 'has-plan' : '', (dow===0||dow===6) ? 'wknd' : ''].filter(Boolean).join(' ');
+    const cls = ['wk-row', isToday ? 'today' : '', meals ? 'has-plan' : '', (dow===0||dow===6) ? 'wknd' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" onclick="location.hash='/day/${ds}'">
       <div class="wk-date"><span class="wk-dow ${dow===0||dow===6?'wknd':''}">${dowCN}</span><span class="wk-num">${d.getDate()}</span>${isToday?'<span class="wk-today">今</span>':''}</div>
       <div class="wk-meals">${meals || '<span class="wk-empty">还没安排，点这里加餐</span>'}</div>
@@ -539,7 +539,7 @@ function openCartSheet() {
       return `<button class="cs-chip cs-m ${on?'on':''}" style="--mc:${c}" data-k="${k}">${l}</button>`;
     }).join('');
     return `<div class="cs-row">
-      <div class="cs-head"><span class="cs-name">${esc(it.title || '（菜谱已删除）')}</span><button class="cs-del" onclick="cartRemove(${idx});openCartSheet();drawCartBar()">✕</button></div>
+      <div class="cs-head"><span class="cs-name">${esc(it.title || '（菜谱已删除）')}</span><button class="cs-del" onclick="event.stopPropagation();cartDelFromSheet(${idx},this)">✕</button></div>
       <div class="cs-chips cs-dates" data-idx="${idx}">${dateChips}</div>
       <div class="cs-chips cs-meals" data-idx="${idx}">${mealChips}</div>
     </div>`;
@@ -585,6 +585,16 @@ function openCartSheet() {
     const d = window._pickDefault || {};
     location.hash = d.date ? `/day/${d.date}` : '/calendar';
   };
+}
+// 分配sheet里删一条:先关当前modal(避免叠加多个),删数据,篮还有货就重开sheet,没了就清篮条
+function cartDelFromSheet(idx, btnEl) {
+  const modal = btnEl.closest('.modal-bg');
+  cartRemove(idx);
+  const left = getCart().length;
+  if (modal) modal.remove();
+  if (left) { openCartSheet(); }
+  else { cartBarRemove(); }
+  drawCartBar();
 }
 
 // 标签多选浮层：展开/收起 + 渲染 checkbox 列表

@@ -87,7 +87,9 @@ async function importAll(data) {
   if (Array.isArray(data.recipes)) {
     for (const r of data.recipes) {
       const rec = { ...r };
-      if (rec.images) rec.images = rec.images.map(u => (typeof u === 'string' && u.indexOf('data:') === 0) ? dataUrlToBlob(u) : null);
+      // 兼容旧版导出:images 可能是数字(旧版剥成数量)或缺失,只有数组里的 dataURL 才转 Blob
+      if (Array.isArray(rec.images)) rec.images = rec.images.map(u => (typeof u === 'string' && u.indexOf('data:') === 0) ? dataUrlToBlob(u) : null);
+      else rec.images = [];
       await dbPut('recipes', rec); counts.recipes++;
     }
   }
@@ -95,7 +97,8 @@ async function importAll(data) {
   if (Array.isArray(data.pantry)) {
     for (const p of data.pantry) {
       const it = { ...p };
-      if (it.image) it.image = dataUrlToBlob(it.image);
+      if (it.image && typeof it.image === 'string' && it.image.indexOf('data:') === 0) it.image = dataUrlToBlob(it.image);
+      else if (it.image && typeof it.image !== 'string') it.image = null;
       await dbPut('pantry', it); counts.pantry++;
     }
   }
