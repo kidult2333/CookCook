@@ -34,8 +34,12 @@ function imgURL(blob) {
   return u;
 }
 function revokeObjURLs() {
-  if (window._imgLog && _objURLs.length) imgLog('revoke', _objURLs.length + '个URL', []);
   _objURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); _objURLs = [];
+}
+// 延后释放上一页的 object URL:等旧页图片加载完+新页渲染完再释放,避免提前释放导致图不显示
+function revokeObjURLsDelayed() {
+  const old = _objURLs; _objURLs = [];
+  setTimeout(() => { old.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); }, 2000);
 }
 // 复制文本到剪贴板（带 execCommand 兜底，iOS Safari 兼容）
 function copyLink(text) {
@@ -63,7 +67,7 @@ async function toggleKcal() {
   showKcal = !showKcal;
   try { await setMeta('showKcal', showKcal); } catch (e) {}
   const ico = document.getElementById('kcal-eye');
-  if (ico) ico.textContent = showKcal ? '👁' : '👁‍🗨';
+  if (ico) ico.textContent = showKcal ? '👁' : '🙈';
   // 重画当前页让卡路里显隐生效
   route();
 }
@@ -99,7 +103,7 @@ function route() {
   const hash = location.hash.slice(1) || '/calendar';
   const [path, ...rest] = hash.split('/');
   closeMoreMenu();
-  revokeObjURLs(); // 切页前释放上一页的图片 object URL,降内存压力
+  revokeObjURLsDelayed(); // 切页时延后2秒释放上一页图片URL(等加载完),避免提前释放导致图不显示
   // 离开选菜模式:清加购态 + 移除底部篮条(篮子数据保留,只是不显示)
   if (!hash.startsWith('/pick')) { pickLeave(); cartBarRemove(); }
   // 离开餐单页:重置编辑态,避免"点了编辑没完成就返回"后,再点日历任何一天都进编辑态
@@ -499,7 +503,7 @@ async function renderRecipes() {
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
-        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'👁‍🗨 卡路里'}</button>
+        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'🙈 卡路里'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
@@ -556,7 +560,7 @@ async function renderPick() {
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
-        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'👁‍🗨 卡路里'}</button>
+        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'🙈 卡路里'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
@@ -886,7 +890,7 @@ async function renderRecipeEdit(id) {
   drawRecipeEditor();
 }
 function drawRecipeEditor() {
-  revokeObjURLs(); // 重渲染前释放上一轮的图片 object URL,防编辑页频繁重渲累积内存
+  // revokeObjURLs(); // 暂停主动释放,验证图不显示根因
   const s = editState;
   let ingRows = s.ingredients.map((i, idx) => `
     <div class="ing-edit-row"><input class="n" placeholder="食材" value="${esc(i.name)}" oninput="editState.ingredients[${idx}].name=this.value">
@@ -992,7 +996,7 @@ function renderImport() {
   drawImport();
 }
 function drawImport() {
-  revokeObjURLs(); // 重渲染前释放上一轮的图片 object URL
+  // revokeObjURLs(); // 暂停主动释放,验证图不显示根因(已确认是revoke提前释放导致)
   const s = importState;
   const ingRows = s.ingredients.map((i, idx) => `
     <div class="ing-edit-row"><input class="n" placeholder="食材名" value="${esc(i.name)}" oninput="importState.ingredients[${idx}].name=this.value">
