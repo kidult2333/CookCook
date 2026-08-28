@@ -8,10 +8,26 @@ const $more = document.getElementById('more-btn');
 // ---------- small helpers ----------
 function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+// ---------- 图片诊断日志(排查"编辑/置顶后图片丢失") ----------
+// 记录每次图片相关操作的 images 真实状态,丢图时可导出发给我看
+window._imgLog = [];
+function imgLog(op, id, images) {
+  const arr = Array.isArray(images) ? images : [];
+  const desc = arr.map(b => {
+    if (b == null) return 'null';
+    if (typeof b === 'string') return `str(${b.length})`;
+    if (b instanceof Blob) return `Blob(${b.size})`;
+    return `${typeof b}?`;
+  });
+  window._imgLog.push({ t: new Date().toISOString().slice(11, 23), op, id: id || '-', n: arr.length, imgs: desc });
+  if (window._imgLog.length > 200) window._imgLog.shift();
+}
 // 生成图片 object URL；记下来,渲染前统一 revoke,避免 iOS Safari 内存压力回收 Blob 导致图片丢失
 let _objURLs = [];
 function imgURL(blob) {
   if (!blob) return '';
+  if (typeof blob === 'string') return blob; // base64 data URL 直接用,不创建 object URL
   const u = URL.createObjectURL(blob);
   _objURLs.push(u);
   return u;
@@ -771,6 +787,7 @@ async function refreshRecipeList() {
 async function renderRecipeDetail(id) {
   const r = await getRecipe(id);
   if (!r) { $app.innerHTML = `<div class="empty">菜谱不存在</div><button class="btn ghost" onclick="history.back()">返回</button>`; return; }
+  imgLog('renderDetail', id, r.images);
   let imgs = (r.images || []).map(b => `<img src="${imgURL(b)}" style="width:100%;border-radius:12px;margin-bottom:8px">`).join('');
   // 食材 + 每项卡路里（受全局 showKcal 开关控制）— 两列对齐清单
   const kcal = recipeKcal(r.ingredients || []);
@@ -856,6 +873,7 @@ let editState = null; // {id?, title, link, ingredients:[], steps:[], images:[],
 async function renderRecipeEdit(id) {
   if (id) {
     const r = await getRecipe(id);
+    imgLog('renderEdit(init)', id, r.images);
     // images 断开引用拷贝,避免 editState 与 DB 对象共享数组引用导致意外修改原记录
     editState = { id: r.id, title: r.title || '', link: r.link || '', ingredients: (r.ingredients || []).map(i => ({ ...i })), steps: (r.steps || []).map(s => ({ ...s })), images: (r.images || []).slice(), tags: (r.tags || []).slice() };
   } else {
@@ -1340,7 +1358,31 @@ async function renderMore() {
     <div class="card">
       <div class="section-title">关于</div>
       <p style="font-size:13px;color:var(--muted);line-height:1.7">CookCook — 离线可用的菜谱与餐单 PWA。<br>新建菜谱支持粘贴小红书文本自动识别（截图+实况文本复制+粘贴），非自动抓取。</p>
+    </div>
+    <div class="card">
+      <div class="section-title">📋 图片诊断日志</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7">记录每次打开/编辑/置顶菜谱时图片的真实状态。如果遇到"图片丢失"，先复现一次（点置顶/编辑让图消失），然后回来点下面按钮，把日志发给我看，就能定位根因。</p>
+      <button class="btn secondary" onclick="moreImgLog()">查看 / 复制图片日志</button>
     </div>`;
+}
+function moreImgLog() {
+  const log = window._imgLog || [];
+  const txt = log.length
+    ? log.map(e => `${e.t} ${e.op} id=${(e.id||'').slice(0,8)} n=${e.n} [${e.imgs.join(', ')}]`).join('\n')
+    : '（还没有日志记录。去点一下菜谱的置顶/编辑再回来看。）';
+  const m = el(`<div class="modal-bg" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-height:80vh;display:flex;flex-direction:column">
+      <h2>图片诊断日志（最近${log.length}条）<button class="modal-close" onclick="this.closest('.modal-bg').remove()">✕</button></h2>
+      <textarea id="imglog-txt" readonly style="flex:1;min-height:300px;font-size:11px;font-family:monospace;white-space:pre;line-height:1.5">${esc(txt)}</textarea>
+      <button class="btn" id="imglog-copy" style="margin-top:10px">📋 一键复制日志</button>
+    </div></div>`);
+  document.body.appendChild(m);
+  m.querySelector('#imglog-copy').onclick = () => {
+    const t = m.querySelector('#imglog-txt');
+    t.select();
+    try { document.execCommand('copy'); toast('已复制,粘贴发给我'); }
+    catch (e) { toast('复制失败,请手动选中上面的文本复制'); }
+  };
 }
 async function moreExport() {
   const data = await exportAllFull();

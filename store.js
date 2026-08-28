@@ -3,12 +3,19 @@
 
 // ---- recipes ----
 async function listRecipes() { return dbAll('recipes'); }
-async function getRecipe(id) { return dbGet('recipes', id); }
+async function getRecipe(id) {
+  const r = await dbGet('recipes', id);
+  if (r && window._imgLog) imgLog('getRecipe', id, r.images);
+  return r;
+}
 async function saveRecipe(r) {
   if (!r.id) r.id = uid();
   if (!r.createdAt) r.createdAt = new Date().toISOString();
   r.updatedAt = new Date().toISOString();
-  return dbPut('recipes', r);
+  if (window._imgLog) imgLog('saveRecipe(pre)', r.id, r.images);
+  const res = await dbPut('recipes', r);
+  if (window._imgLog) imgLog('saveRecipe(post)', r.id, r.images);
+  return res;
 }
 async function deleteRecipe(id) { return dbDel('recipes', id); }
 // 部分更新菜谱（合并到已有记录，更新 updatedAt）
@@ -17,7 +24,10 @@ async function patchRecipe(id, patch) {
   if (!r) return null;
   Object.assign(r, patch);
   r.updatedAt = new Date().toISOString();
-  return dbPut('recipes', r);
+  if (window._imgLog) imgLog('patchRecipe(pre)', id, r.images);
+  const res = await dbPut('recipes', r);
+  if (window._imgLog) imgLog('patchRecipe(post)', id, r.images);
+  return res;
 }
 
 // ---- meal plans (keyed by date 'YYYY-MM-DD') ----
