@@ -30,9 +30,13 @@ function imgURL(blob) {
   if (typeof blob === 'string') return blob; // base64 data URL 直接用,不创建 object URL
   const u = URL.createObjectURL(blob);
   _objURLs.push(u);
+  if (window._imgLog) imgLog('imgURL(create)', u.slice(-12), [blob]);
   return u;
 }
-function revokeObjURLs() { _objURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); _objURLs = []; }
+function revokeObjURLs() {
+  if (window._imgLog && _objURLs.length) imgLog('revoke', _objURLs.length + '个URL', []);
+  _objURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); _objURLs = [];
+}
 // 复制文本到剪贴板（带 execCommand 兜底，iOS Safari 兼容）
 function copyLink(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
