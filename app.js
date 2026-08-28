@@ -501,7 +501,6 @@ async function renderRecipes() {
       <div class="rec-filter-row">
         <button class="add-mini" style="background:${recipeFilterMode==='all'?'var(--accent)':'var(--card)'};color:${recipeFilterMode==='all'?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('all')">全部</button>
         ${modeBtn('fav','收藏','★')}
-        ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
         <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 热量':'🙈 热量'}</button>
       </div>
@@ -558,7 +557,6 @@ async function renderPick() {
       <div class="rec-filter-row">
         <button class="add-mini" style="background:${recipeFilterMode==='all'?'var(--accent)':'var(--card)'};color:${recipeFilterMode==='all'?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('all')">全部</button>
         ${modeBtn('fav','收藏','★')}
-        ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
         <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 热量':'🙈 热量'}</button>
       </div>
@@ -684,12 +682,19 @@ function drawTagPicker() {
   listRecipes().then(rs => {
     const all = [...new Set(rs.flatMap(r => r.tags || []))];
     const sel = window._recipeTags || [];
+    const cookedOn = recipeFilterMode === 'cooked';
+    // "做过"作为特殊项置顶,勾选=recipeFilterMode='cooked',与普通标签(_recipeTags)独立
+    const cookedItem = `<label class="tp-item ${cookedOn?'on':''}" style="--bg:#e8f5e1;--fg:#3a7d2a">
+        <input type="checkbox" ${cookedOn?'checked':''} onchange="toggleCookedFilter()">
+        <span class="tp-chip">✓ 做过</span>
+      </label>`;
     p.innerHTML = `
       <div class="tp-head">
         <span>勾选标签筛选（可多选，含任一即显示）</span>
-        <button class="tp-clear" onclick="clearRecipeTags()">${sel.length?'清空':''}</button>
+        <button class="tp-clear" onclick="clearRecipeTags()">${(sel.length||cookedOn)?'清空':''}</button>
       </div>
       <div class="tp-list">
+        ${cookedItem}
         ${all.length ? all.map(t => {
           const [bg, fg] = tagColor(t);
           const on = sel.includes(t);
@@ -699,8 +704,14 @@ function drawTagPicker() {
           </label>`;
         }).join('') : '<div class="tp-empty">还没有标签，编辑菜谱时可加</div>'}
       </div>
-      <div class="tp-foot">${sel.length?`已选 ${sel.length} 个`:'未选（不过滤）'}</div>`;
+      <div class="tp-foot">${(sel.length||cookedOn)?`已选 ${sel.length + (cookedOn?1:0)} 个`:'未选（不过滤）'}</div>`;
   });
+}
+function toggleCookedFilter() {
+  recipeFilterMode = (recipeFilterMode === 'cooked') ? 'all' : 'cooked';
+  drawTagPicker();
+  updateTagToggleBtn();
+  refreshRecipeList();
 }
 function toggleRecipeTag(t) {
   if (!window._recipeTags) window._recipeTags = [];
@@ -728,12 +739,15 @@ function toggleRecipeTag(t) {
 function updateTagToggleBtn() {
   const btn = document.querySelector('.tag-toggle');
   if (!btn) return;
-  const n = (window._recipeTags || []).length;
+  const tagN = (window._recipeTags || []).length;
+  const cookedOn = recipeFilterMode === 'cooked';
+  const n = tagN + (cookedOn ? 1 : 0);
   btn.textContent = n ? `标签 ${n} 选 ▾` : '标签 ▾';
   btn.classList.toggle('on', n > 0);
 }
 function clearRecipeTags() {
   window._recipeTags = [];
+  recipeFilterMode = 'all'; // 清"做过"筛选(已整合进标签浮层)
   document.querySelectorAll('#tag-picker .tp-item').forEach(item => {
     item.classList.remove('on');
     const cb = item.querySelector('input'); if (cb) cb.checked = false;
@@ -743,6 +757,7 @@ function clearRecipeTags() {
   const clear = document.querySelector('#tag-picker .tp-clear');
   if (clear) clear.textContent = '';
   updateTagToggleBtn();
+  refreshRecipeList();
   refreshRecipeList();
 }
 
@@ -1366,11 +1381,7 @@ async function renderMore() {
     <div class="card">
       <div class="section-title">关于</div>
       <p style="font-size:13px;color:var(--muted);line-height:1.7">CookCook — 离线可用的菜谱与餐单 PWA。<br>新建菜谱支持粘贴小红书文本自动识别（截图+实况文本复制+粘贴），非自动抓取。</p>
-    </div>
-    <div class="card">
-      <div class="section-title">📋 图片诊断日志</div>
-      <p style="font-size:13px;color:var(--muted);line-height:1.7">记录每次打开/编辑/置顶菜谱时图片的真实状态。如果遇到"图片丢失"，先复现一次（点置顶/编辑让图消失），然后回来点下面按钮，把日志发给我看，就能定位根因。</p>
-      <button class="btn secondary" onclick="moreImgLog()">查看 / 复制图片日志</button>
+      <a href="javascript:moreImgLog()" style="font-size:12px;color:var(--muted);opacity:.6">图片诊断日志</a>
     </div>`;
 }
 function moreImgLog() {
