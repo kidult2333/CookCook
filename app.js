@@ -503,7 +503,7 @@ async function renderRecipes() {
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
-        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'🙈 卡路里'}</button>
+        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 热量':'🙈 热量'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
@@ -560,7 +560,7 @@ async function renderPick() {
         ${modeBtn('fav','收藏','★')}
         ${modeBtn('cooked','做过','✓')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
-        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 卡路里':'🙈 卡路里'}</button>
+        <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 热量':'🙈 热量'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
@@ -777,11 +777,11 @@ async function refreshRecipeList() {
     const thumb = r.images && r.images[0] ? `<img class="recipe-thumb" src="${imgURL(r.images[0])}">` : `<div class="recipe-thumb"></div>`;
     const ings = (r.ingredients || []).map(i => i.name).join('、');
     const kcal = recipeKcal(r.ingredients || []);
-    const kcalTag = (showKcal && kcal.matched) ? `<span class="tag" style="background:#fbe7d2;color:#a85a1a">${kcal.total}kcal</span>` : '';
+    const kcalTag = (showKcal && kcal.matched) ? `<span class="tag" style="background:#fbe7d2;color:#a85a1a">${kcal.total} 热量</span>` : '';
     const tagTags = (r.tags || []).map(tagChipRO).join('');
     const pinIcon = r.pinned ? `<span class="pin-mark" title="置顶">📌</span>` : '';
     const favBtn = `<span class="rec-fav ${r.fav?'on':''}" onclick="toggleFav('${r.id}',event)">${r.fav?'★':'☆'}</span>`;
-    const cookedMark = r.cooked ? `<span class="cooked-mark">✓ 做过</span>` : '';
+    const cookedMark = r.cooked ? `<span class="tag" style="background:#e8f5e1;color:#3a7d2a">✓ 做过</span>` : '';
     const ratingStars = r.cooked && r.rating ? starsRO(r.rating) : '';
     const pickMode = window._pickMode;
     const addBtn = pickMode ? `<button class="add-cart" onclick="event.stopPropagation();pickAdd('${r.id}')">＋ 加购</button>` : '';
