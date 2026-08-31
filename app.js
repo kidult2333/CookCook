@@ -424,6 +424,8 @@ async function dayGenList(date) {
 // 菜谱列表：搜索 / 收藏 / 做过 / 置顶
 let recipeSearch = '';
 let recipeFilterMode = 'all'; // all | fav | cooked
+let recipeSort = 'default'; // default | kcal | ingCount | name | tag | time
+const SORT_LABELS = { default: '默认', kcal: '热量', ingCount: '食材种', name: '名称', tag: '类别', time: '添加时间' };
 let _searchTimer = null;
 // 搜索：防抖 + 只刷新列表区（不重画搜索框，避免中文输入法组词被打断）
 function setRecipeSearch(v) {
@@ -494,6 +496,7 @@ async function renderRecipes() {
   const selTags = window._recipeTags;
   const tagBtnLabel = selTags.length ? `标签 ${selTags.length} 选 ▾` : '标签 ▾';
   const tagBtnOn = selTags.length > 0;
+  const sortBtnLabel = recipeSort === 'default' ? '排序 ▾' : `排序 ${SORT_LABELS[recipeSort]} ▾`;
   // 框架：搜索框 + 筛选条 + 切换浮层 + 列表容器（列表容器单独刷新，搜索框不被重画）
   $app.innerHTML = `
     <div class="card">
@@ -502,9 +505,11 @@ async function renderRecipes() {
         <button class="add-mini" style="background:${recipeFilterMode==='all'?'var(--accent)':'var(--card)'};color:${recipeFilterMode==='all'?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('all')">全部</button>
         ${modeBtn('fav','收藏','★')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
+        <button class="add-mini sort-toggle ${recipeSort!=='default'?'on':''}" onclick="toggleSortPicker()">${sortBtnLabel}</button>
         <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 热量':'🙈 热量'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
+      <div id="sort-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
     </div>
     <div class="fab-bar">
@@ -546,6 +551,7 @@ async function renderPick() {
   const selTags = window._recipeTags;
   const tagBtnLabel = selTags.length ? `标签 ${selTags.length} 选 ▾` : '标签 ▾';
   const tagBtnOn = selTags.length > 0;
+  const sortBtnLabel = recipeSort === 'default' ? '排序 ▾' : `排序 ${SORT_LABELS[recipeSort]} ▾`;
   const modeBtn = (m, label, icon) => {
     const on = recipeFilterMode === m;
     return `<button class="add-mini" style="background:${on?'var(--accent)':'var(--card)'};color:${on?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('${m}')">${icon} ${label}</button>`;
@@ -558,9 +564,11 @@ async function renderPick() {
         <button class="add-mini" style="background:${recipeFilterMode==='all'?'var(--accent)':'var(--card)'};color:${recipeFilterMode==='all'?'#fff':'var(--accent)'};border:1px solid var(--accent)" onclick="setRecipeFilterMode('all')">全部</button>
         ${modeBtn('fav','收藏','★')}
         ${allTags.length ? `<button class="add-mini tag-toggle ${tagBtnOn?'on':''}" onclick="toggleTagPicker()">${tagBtnLabel}</button>` : ''}
+        <button class="add-mini sort-toggle ${recipeSort!=='default'?'on':''}" onclick="toggleSortPicker()">${sortBtnLabel}</button>
         <button class="add-mini kcal-toggle ${showKcal?'on':''}" onclick="toggleKcal();refreshRecipeList()" title="显示/隐藏卡路里">${showKcal?'👁 热量':'🙈 热量'}</button>
       </div>
       <div id="tag-picker" class="tag-picker" style="display:none"></div>
+      <div id="sort-picker" class="tag-picker" style="display:none"></div>
       <div id="rec-list"></div>
     </div>`;
   refreshRecipeList();
@@ -673,7 +681,12 @@ function toggleTagPicker() {
   const p = document.getElementById('tag-picker');
   if (!p) return;
   p.style.display = (p.style.display === 'none') ? 'block' : 'none';
-  if (p.style.display === 'block') drawTagPicker();
+  if (p.style.display === 'block') {
+    drawTagPicker();
+    // 标签浮层展开时收起排序浮层，避免重叠
+    const sp = document.getElementById('sort-picker');
+    if (sp) sp.style.display = 'none';
+  }
 }
 function drawTagPicker() {
   const p = document.getElementById('tag-picker');
@@ -758,7 +771,49 @@ function clearRecipeTags() {
   if (clear) clear.textContent = '';
   updateTagToggleBtn();
   refreshRecipeList();
+}
+
+// 排序浮层：展开/收起 + 渲染单选列表
+function toggleSortPicker() {
+  const p = document.getElementById('sort-picker');
+  if (!p) return;
+  p.style.display = (p.style.display === 'none') ? 'block' : 'none';
+  if (p.style.display === 'block') {
+    drawSortPicker();
+    // 排序浮层展开时收起标签浮层，避免重叠
+    const tp = document.getElementById('tag-picker');
+    if (tp) tp.style.display = 'none';
+  }
+}
+function drawSortPicker() {
+  const p = document.getElementById('sort-picker');
+  if (!p) return;
+  const order = ['default', 'time', 'kcal', 'ingCount', 'name', 'tag'];
+  p.innerHTML = `
+    <div class="tp-head"><span>排序方式（单选）</span></div>
+    <div class="tp-list">
+      ${order.map(k => {
+        const on = recipeSort === k;
+        return `<label class="tp-item ${on?'on':''}" style="--bg:#fff3e0;--fg:#a35a18" onclick="setRecipeSort('${k}')">
+          <span class="tp-chip">${on?'✓ ':''}${SORT_LABELS[k]}</span>
+        </label>`;
+      }).join('')}
+    </div>`;
+}
+function setRecipeSort(k) {
+  recipeSort = k;
+  drawSortPicker();
   refreshRecipeList();
+  updateSortToggleBtn();
+  // 选完即收起浮层（单选行为）
+  const p = document.getElementById('sort-picker');
+  if (p) p.style.display = 'none';
+}
+function updateSortToggleBtn() {
+  document.querySelectorAll('.sort-toggle').forEach(btn => {
+    btn.textContent = recipeSort === 'default' ? '排序 ▾' : `排序 ${SORT_LABELS[recipeSort]} ▾`;
+    btn.classList.toggle('on', recipeSort !== 'default');
+  });
 }
 
 // 只刷新列表区（搜索/筛选时调用，不碰搜索框）
@@ -780,12 +835,24 @@ async function refreshRecipeList() {
   if (activeTags.length) filtered = filtered.filter(r => (r.tags || []).some(t => activeTags.includes(t)));
   if (recipeFilterMode === 'fav') filtered = filtered.filter(r => r.fav);
   if (recipeFilterMode === 'cooked') filtered = filtered.filter(r => r.cooked);
-  // 排序：置顶 → 做过 → 收藏 → 新建倒序
+  // 排序：置顶永远优先,其次按 recipeSort
+  const kcalOf = r => { const k = recipeKcal(r.ingredients || []); return k.matched ? k.total : 0; };
+  const ingCountOf = r => (r.ingredients || []).length;
+  const nameOf = r => (r.title || '').toLowerCase();
+  const tagOf = r => (r.tags || []).length ? (r.tags || []).slice().sort().join('/') : 'zzz';
   filtered.sort((a, b) => {
-    if ((!!b.pinned) - (!!a.pinned)) return (!!b.pinned) - (!!a.pinned);
-    if ((b.cooked?1:0) - (a.cooked?1:0)) return (b.cooked?1:0) - (a.cooked?1:0);
-    if ((b.fav?1:0) - (a.fav?1:0)) return (b.fav?1:0) - (a.fav?1:0);
-    return (b.createdAt || '').localeCompare(a.createdAt || '');
+    if ((!!b.pinned) - (!!a.pinned)) return (!!b.pinned) - (!!a.pinned); // 置顶优先
+    switch (recipeSort) {
+      case 'kcal': return kcalOf(a) - kcalOf(b);            // 热量升序
+      case 'ingCount': return ingCountOf(b) - ingCountOf(a); // 食材种类多→少
+      case 'name': return nameOf(a).localeCompare(nameOf(b), 'zh'); // 名称
+      case 'tag': return tagOf(a).localeCompare(tagOf(b), 'zh');     // 类别(标签)
+      case 'time': return (b.createdAt || '').localeCompare(a.createdAt || ''); // 添加时间新→旧
+      default: // default: 做过→收藏→新建倒序
+        if ((b.cooked?1:0) - (a.cooked?1:0)) return (b.cooked?1:0) - (a.cooked?1:0);
+        if ((b.fav?1:0) - (a.fav?1:0)) return (b.fav?1:0) - (a.fav?1:0);
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+    }
   });
   if (!filtered.length) { box.innerHTML = `<div class="empty">没有匹配的菜谱</div>`; return; }
   box.innerHTML = filtered.map(r => {
