@@ -36,10 +36,14 @@ function imgURL(blob) {
 function revokeObjURLs() {
   _objURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); _objURLs = [];
 }
-// 延后释放上一页的 object URL:等旧页图片加载完+新页渲染完再释放,避免提前释放导致图不显示
+// 延后释放上一页的 object URL:只释放当前 DOM 里不存在的 URL,正在显示的图绝不释放(防盲定时器误杀)
 function revokeObjURLsDelayed() {
   const old = _objURLs; _objURLs = [];
-  setTimeout(() => { old.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); }, 2000);
+  setTimeout(() => {
+    const inDom = new Set();
+    document.querySelectorAll('img[src^="blob:"]').forEach(i => inDom.add(i.src));
+    old.forEach(u => { if (!inDom.has(u)) { try { URL.revokeObjectURL(u); } catch (e) {} } });
+  }, 2000);
 }
 // 复制文本到剪贴板（带 execCommand 兜底，iOS Safari 兼容）
 function copyLink(text) {
